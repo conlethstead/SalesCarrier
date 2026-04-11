@@ -1,5 +1,8 @@
 # Let's Encrypt (ACME) is issued automatically once DNS for {$METRICS_DOMAIN} points to this host.
 # Set METRICS_DOMAIN and ACME_EMAIL in the environment (see docker-compose.prod.yml).
+#
+# HTTPS-only for clients: Caddy serves TLS on :443 and redirects plain HTTP on :80 to HTTPS.
+# Port 80 stays open for the ACME http-01 challenge and that redirect — not for API use over HTTP.
 
 {
 	email {$ACME_EMAIL}
@@ -7,5 +10,12 @@
 
 {$METRICS_DOMAIN} {
 	encode gzip
+
+	# Tell browsers to use HTTPS only for this host (challenge requirement: TLS in production).
+	# HSTS: browsers use HTTPS only for this host (aligns with “HTTPS in production”).
+	header Strict-Transport-Security "max-age=63072000; includeSubDomains"
+	header X-Content-Type-Options "nosniff"
+
+	# Caddy sets X-Forwarded-Proto and related headers for the upstream by default.
 	reverse_proxy metrics:3001
 }

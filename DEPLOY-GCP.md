@@ -1,15 +1,25 @@
 # Deploy on Google Cloud with Docker and Let’s Encrypt
 
+> **Using Cloud Run instead?** If you already deployed to **Cloud Run** and have a `https://….run.app` URL, you **do not** need this guide — TLS and HTTPS are already handled. Follow **[DEPLOY-CLOUD-RUN.md](./DEPLOY-CLOUD-RUN.md)** only. This file is the **VM + Caddy + custom domain** path.
+
 This guide runs the metrics stack on a **Compute Engine VM** with **Docker Compose**, **Caddy** as the reverse proxy, and **automatic HTTPS** via Let’s Encrypt (ACME HTTP-01). The Node app stays on the private Docker network; only **Caddy** listens on **80** and **443**.
 
 ## What gets deployed
 
-| Component | Role |
-|-----------|------|
-| `metrics` | Express API + static React UI (`Dockerfile`) |
-| `caddy` | Terminates TLS, obtains/renews Let’s Encrypt certs, proxies to `metrics:3001` |
+
+| Component | Role                                                                          |
+| --------- | ----------------------------------------------------------------------------- |
+| `metrics` | Express API + static React UI (`Dockerfile`)                                  |
+| `caddy`   | Terminates TLS, obtains/renews Let’s Encrypt certs, proxies to `metrics:3001` |
+
 
 Your HappyRobot workflow should **`POST https://<METRICS_DOMAIN>/api/events`** with header **`X-API-Key: <API_KEY>`**.
+
+### HTTPS-only (matches challenge security notes)
+
+- **Clients** (browser, HappyRobot HTTP action) should use `**https://` only** for the app and API. Caddy serves TLS on **443**, redirects **80→443**, and sets **HSTS** so browsers stick to HTTPS.
+- The **metrics** container does **not** publish port **3001** to the internet; only Caddy is exposed. That avoids accidentally using cleartext HTTP against the API in production.
+- **Port 80** remains open for Let’s Encrypt **http-01** and the redirect to HTTPS — not for calling the API over HTTP on purpose.
 
 ## Prerequisites
 
@@ -38,6 +48,8 @@ gcloud compute instances create "$VM_NAME" \
 ```
 
 ## 2. Firewall: allow HTTP and HTTPS
+
+Keep **both** **tcp:80** and **tcp:443** open to the VM. **443** is where users and workflows use **HTTPS**. **80** is still required for **Let’s Encrypt HTTP-01** and for **redirecting** `http://` requests to `https://`; it does not mean your API is “HTTP-only” — configure clients to call **`https://`**.
 
 ```bash
 gcloud compute firewall-rules create carrier-metrics-allow-http-https \
@@ -82,8 +94,25 @@ Log out and SSH back in so `docker` works without `sudo`.
 
 ## 4. DNS → VM IP
 
+You need the VM’s **external IP** for your DNS **A record**. Use **one** of these:
+
+**A. Google Cloud Console** — Compute Engine → **VM instances** → **External IP** column (simplest).
+
+**B. Your laptop or Cloud Shell** (not SSH’d into the VM) — `gcloud` uses your user login and has the right API access:
+
 ```bash
-gcloud compute instances describe "$VM_NAME" --zone="$ZONE" --format='get(networkInterfaces[0].accessConfigs[0].natIP)'
+export VM_NAME=carrier-metrics
+export ZONE=us-central1-a
+gcloud compute instances describe "$VM_NAME" --zone="$ZONE" \
+  --format='get(networkInterfaces[0].accessConfigs[0].natIP)'
+```
+
+**C. Already SSH’d into the VM?** Do **not** rely on `gcloud compute instances describe` there: the VM’s default credentials often return **“insufficient authentication scopes”** for the Compute API. Either run the `gcloud` command from **(B)** or print this machine’s public IP from **instance metadata** (no extra scopes):
+
+```bash
+curl -fsS -H "Metadata-Flavor: Google" \
+  "http://metadata.google.com/compute/v1/instance/network-interfaces/0/access-configs/0/external-ip"
+echo
 ```
 
 Create an **A record** for `metrics.yourdomain.com` (your real hostname) pointing to that IP. Wait for propagation (often minutes; use `dig +short metrics.yourdomain.com`).
@@ -133,7 +162,7 @@ curl -sS -X POST "https://<METRICS_DOMAIN>/api/events" \
 
 ## Persistence
 
-- Call events are stored under **`DATA_DIR`** inside the container (`/data` in `docker-compose.prod.yml`), backed by the **`carrier-metrics-data`** Docker volume. Data survives container restarts; **back up the volume** or snapshot the disk for DR.
+- Call events are stored under `**DATA_DIR**` inside the container (`/data` in `docker-compose.prod.yml`), backed by the `**carrier-metrics-data**` Docker volume. Data survives container restarts; **back up the volume** or snapshot the disk for DR.
 
 ## Operations
 

@@ -4,6 +4,8 @@ React + TypeScript UI and a small **Express** API that **ingests** call outcome 
 
 ## API
 
+**Production:** Use **HTTPS only** (`https://…`) for the dashboard and for workflow calls to **`POST /api/events`**. The reverse proxy (e.g. Caddy in `docker-compose.prod.yml`) terminates TLS, redirects HTTP→HTTPS, and sends `Strict-Transport-Security`. Plain HTTP to port **3001** is for local/dev only when you run the Node process without a proxy.
+
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
 | `GET` | `/api/health` | none | Liveness |
@@ -31,7 +33,7 @@ React + TypeScript UI and a small **Express** API that **ingests** call outcome 
 
 Events are appended to `data/events.json` (configurable via `DATA_DIR`).
 
-### Example: send an event
+### Example: send an event (local HTTP)
 
 ```bash
 curl -sS -X POST http://127.0.0.1:3001/api/events \
@@ -39,6 +41,8 @@ curl -sS -X POST http://127.0.0.1:3001/api/events \
   -H "X-API-Key: $API_KEY" \
   -d '{"call_id":"demo-1","outcome":"booked","sentiment":"positive","load_id":"LD-1","agreed_rate":1900,"negotiation_rounds":1}'
 ```
+
+**Deployed (HTTPS):** same request with `https://<your-domain>/api/events` (Let’s Encrypt or other TLS).
 
 ## Local development
 
@@ -85,7 +89,9 @@ Use **`docker-compose.prod.yml`** with **`Caddyfile`**: Caddy terminates TLS and
 docker compose -f docker-compose.prod.yml --env-file .env up -d --build
 ```
 
-**Google Cloud (Compute Engine VM)** step-by-step: [DEPLOY-GCP.md](./DEPLOY-GCP.md).
+**Google Cloud (Compute Engine VM + Caddy + Let’s Encrypt):** [DEPLOY-GCP.md](./DEPLOY-GCP.md).
+
+**Google Cloud Run (HTTPS `*.run.app`, no domain required):** [DEPLOY-CLOUD-RUN.md](./DEPLOY-CLOUD-RUN.md).
 
 ## HTTPS
 

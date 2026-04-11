@@ -94,6 +94,9 @@ function validatePayload(body: unknown): { ok: true; data: CallEventPayload } | 
 
 export function createApp() {
   const app = express();
+  if (process.env.NODE_ENV === "production") {
+    app.set("trust proxy", 1);
+  }
   app.use(cors());
   app.use(express.json({ limit: "256kb" }));
 
@@ -136,6 +139,7 @@ export function createApp() {
 }
 
 const app = createApp();
-app.listen(PORT, () => {
-  console.log(`Metrics API listening on http://127.0.0.1:${PORT}`);
+const host = process.env.LISTEN_HOST ?? "0.0.0.0";
+app.listen(PORT, host, () => {
+  console.log(`Metrics API listening on http://${host}:${PORT}`);
 });
