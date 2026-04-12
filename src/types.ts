@@ -5,3 +5,4 @@ export type {
   CarrierSentiment,
   MetricsSummary,
 } from "../shared/metrics";
+export { isLegacyRecord } from "../shared/metrics";

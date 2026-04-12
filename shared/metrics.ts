@@ -1,4 +1,27 @@
-/** Payload POSTed by your workflow / middleware after each call (or batched). */
+/** Ingest body for POST /api/events — only reference_number is required. */
+export interface CallEventPayload {
+  reference_number: string;
+  mc_number?: string;
+  /** "yes" = agreed to book, "no" = did not */
+  booking_decision?: "yes" | "no";
+  /** When booking_decision is "no", optional reason (leave empty when "yes") */
+  decline_reason?: string;
+  /** Call length in seconds */
+  call_duration?: number;
+  /** How many times the assistant sent a counteroffer */
+  number_of_counteroffers?: number;
+  /** Whether the carrier was verified via MC */
+  verified?: boolean;
+  /** Carrier legal name from verification */
+  carrier_name?: string;
+  /** High-level sentiment / outcome label from the assistant (e.g. "Not interested") */
+  sentiment_classification?: string;
+  /** Short explanation for the classification */
+  sentiment_reasoning?: string;
+  /** ISO 8601; defaults to server receive time if omitted */
+  occurred_at?: string;
+}
+
 export type CallOutcome =
   | "booked"
   | "declined"
@@ -9,24 +32,27 @@ export type CallOutcome =
 
 export type CarrierSentiment = "positive" | "neutral" | "negative";
 
-export interface CallEventPayload {
+/** Legacy rows stored before the schema change (still counted in summaries). */
+export interface LegacyCallEvent {
   call_id: string;
-  /** ISO 8601; defaults to server receive time if omitted */
   occurred_at?: string;
   outcome: CallOutcome;
   sentiment: CarrierSentiment;
   load_id?: string;
-  /** Agreed linehaul in USD when outcome is booked or negotiated */
   agreed_rate?: number;
-  /** Opening or listed rate for comparison */
   listed_rate?: number;
   negotiation_rounds?: number;
-  /** Optional free text; keep short for dashboard */
   notes?: string;
 }
 
-export interface CallEventRecord extends CallEventPayload {
-  received_at: string;
+export type CallEventRecord =
+  | (CallEventPayload & { received_at: string; occurred_at: string })
+  | (LegacyCallEvent & { received_at: string; occurred_at: string });
+
+export function isLegacyRecord(
+  r: CallEventRecord
+): r is LegacyCallEvent & { received_at: string; occurred_at: string } {
+  return "call_id" in r && typeof (r as LegacyCallEvent).call_id === "string";
 }
 
 export interface MetricsSummary {
@@ -35,7 +61,8 @@ export interface MetricsSummary {
   by_sentiment: Record<CarrierSentiment, number>;
   booked_count: number;
   booking_rate: number;
-  avg_negotiation_rounds_when_negotiated: number | null;
   avg_agreed_rate_when_booked: number | null;
+  avg_negotiation_rounds_when_negotiated: number | null;
+  avg_call_duration_seconds: number | null;
   recent: CallEventRecord[];
 }

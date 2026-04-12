@@ -1,5 +1,8 @@
 import type { CSSProperties } from "react";
 import type { CallEventRecord } from "../types";
+import { isLegacyRecord } from "../types";
+
+const REASON_PREVIEW = 100;
 
 export function RecentTable({ rows }: { rows: CallEventRecord[] }) {
   if (rows.length === 0) {
@@ -38,26 +41,53 @@ export function RecentTable({ rows }: { rows: CallEventRecord[] }) {
           <thead>
             <tr style={{ textAlign: "left", color: "var(--muted)" }}>
               <th style={th}>Time</th>
-              <th style={th}>Call ID</th>
-              <th style={th}>Outcome</th>
+              <th style={th}>Load ref</th>
+              <th style={th}>MC</th>
+              <th style={th}>Carrier</th>
+              <th style={th}>Booking</th>
+              <th style={th}>Decline</th>
+              <th style={th}>Duration</th>
+              <th style={th}>Counters</th>
+              <th style={th}>Verified</th>
               <th style={th}>Sentiment</th>
-              <th style={th}>Load</th>
-              <th style={th}>Agreed $</th>
-              <th style={th}>Rounds</th>
+              <th style={th}>Reasoning</th>
             </tr>
           </thead>
           <tbody>
             {rows.map((r) => (
-              <tr key={`${r.call_id}-${r.received_at}`} style={{ borderTop: "1px solid var(--border)" }}>
+              <tr key={rowKey(r)} style={{ borderTop: "1px solid var(--border)" }}>
                 <td style={td}>{formatTime(r.received_at)}</td>
-                <td style={{ ...td, fontFamily: "var(--mono)", fontSize: "0.8rem" }}>{r.call_id}</td>
-                <td style={td}>{r.outcome}</td>
-                <td style={td}>{r.sentiment}</td>
-                <td style={td}>{r.load_id ?? "—"}</td>
-                <td style={td}>
-                  {r.agreed_rate != null ? `$${r.agreed_rate.toLocaleString()}` : "—"}
-                </td>
-                <td style={td}>{r.negotiation_rounds ?? "—"}</td>
+                {isLegacyRecord(r) ? (
+                  <>
+                    <td style={{ ...td, fontFamily: "var(--mono)", fontSize: "0.8rem" }}>{r.call_id}</td>
+                    <td style={td}>—</td>
+                    <td style={td}>—</td>
+                    <td style={td}>{r.outcome}</td>
+                    <td style={td}>—</td>
+                    <td style={td}>—</td>
+                    <td style={td}>{r.negotiation_rounds ?? "—"}</td>
+                    <td style={td}>—</td>
+                    <td style={td}>{r.sentiment}</td>
+                    <td style={td} title={r.notes}>{preview(r.notes)}</td>
+                  </>
+                ) : (
+                  <>
+                    <td style={{ ...td, fontFamily: "var(--mono)", fontSize: "0.8rem" }}>
+                      {r.reference_number}
+                    </td>
+                    <td style={td}>{r.mc_number ?? "—"}</td>
+                    <td style={td}>{r.carrier_name ?? "—"}</td>
+                    <td style={td}>{r.booking_decision ?? "—"}</td>
+                    <td style={td}>{r.decline_reason?.trim() ? r.decline_reason : "—"}</td>
+                    <td style={td}>{r.call_duration != null ? `${r.call_duration}s` : "—"}</td>
+                    <td style={td}>{r.number_of_counteroffers ?? "—"}</td>
+                    <td style={td}>{r.verified === undefined ? "—" : r.verified ? "yes" : "no"}</td>
+                    <td style={td}>{r.sentiment_classification ?? "—"}</td>
+                    <td style={td} title={r.sentiment_reasoning ?? undefined}>
+                      {preview(r.sentiment_reasoning)}
+                    </td>
+                  </>
+                )}
               </tr>
             ))}
           </tbody>
@@ -65,6 +95,17 @@ export function RecentTable({ rows }: { rows: CallEventRecord[] }) {
       </div>
     </div>
   );
+}
+
+function preview(s: string | undefined): string {
+  if (!s?.trim()) return "—";
+  const t = s.trim();
+  return t.length <= REASON_PREVIEW ? t : `${t.slice(0, REASON_PREVIEW)}…`;
+}
+
+function rowKey(r: CallEventRecord): string {
+  if (isLegacyRecord(r)) return `legacy-${r.call_id}-${r.received_at}`;
+  return `new-${r.reference_number}-${r.received_at}`;
 }
 
 const th: CSSProperties = {
@@ -76,6 +117,7 @@ const th: CSSProperties = {
 const td: CSSProperties = {
   padding: "0.65rem 1rem",
   verticalAlign: "top",
+  maxWidth: "14rem",
 };
 
 function formatTime(iso: string) {

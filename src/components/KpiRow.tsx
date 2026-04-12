@@ -3,22 +3,24 @@ import type { MetricsSummary } from "../types";
 const fmtPct = (n: number) => `${(n * 100).toFixed(1)}%`;
 const fmtMoney = (n: number | null) =>
   n == null ? "—" : `$${n.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
+const fmtSec = (n: number | null) => (n == null ? "—" : `${n.toFixed(0)}s`);
 
 export function KpiRow({ summary }: { summary: MetricsSummary }) {
   const cards = [
     { label: "Total calls", value: String(summary.total_calls) },
     { label: "Booked", value: String(summary.booked_count) },
     { label: "Booking rate", value: fmtPct(summary.booking_rate) },
+    { label: "Avg call duration", value: fmtSec(summary.avg_call_duration_seconds) },
     {
-      label: "Avg agreed rate (booked)",
-      value: fmtMoney(summary.avg_agreed_rate_when_booked),
-    },
-    {
-      label: "Avg negotiation rounds (when negotiated)",
+      label: "Avg counteroffers (when >0)",
       value:
         summary.avg_negotiation_rounds_when_negotiated == null
           ? "—"
           : summary.avg_negotiation_rounds_when_negotiated.toFixed(1),
+    },
+    {
+      label: "Avg agreed rate (legacy rows)",
+      value: fmtMoney(summary.avg_agreed_rate_when_booked),
     },
   ];
 

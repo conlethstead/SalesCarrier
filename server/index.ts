@@ -36,59 +36,82 @@ function requireApiKey(
 function validatePayload(body: unknown): { ok: true; data: CallEventPayload } | { ok: false; error: string } {
   if (!body || typeof body !== "object") return { ok: false, error: "Body must be a JSON object" };
   const b = body as Record<string, unknown>;
-  if (typeof b.call_id !== "string" || !b.call_id.trim()) {
-    return { ok: false, error: "call_id is required" };
+  if (typeof b.reference_number !== "string" || !b.reference_number.trim()) {
+    return { ok: false, error: "reference_number is required" };
   }
-  const outcomes = [
-    "booked",
-    "declined",
-    "no_match",
-    "failed_verification",
-    "abandoned",
-    "negotiated_no_deal",
-  ] as const;
-  if (typeof b.outcome !== "string" || !outcomes.includes(b.outcome as (typeof outcomes)[number])) {
-    return { ok: false, error: "outcome must be a valid CallOutcome" };
-  }
-  const sentiments = ["positive", "neutral", "negative"] as const;
-  if (typeof b.sentiment !== "string" || !sentiments.includes(b.sentiment as (typeof sentiments)[number])) {
-    return { ok: false, error: "sentiment must be positive | neutral | negative" };
-  }
+
   const payload: CallEventPayload = {
-    call_id: b.call_id.trim(),
-    outcome: b.outcome as CallEventPayload["outcome"],
-    sentiment: b.sentiment as CallEventPayload["sentiment"],
+    reference_number: b.reference_number.trim(),
   };
+
+  if (b.mc_number != null) {
+    if (typeof b.mc_number !== "string") return { ok: false, error: "mc_number must be a string" };
+    payload.mc_number = b.mc_number.trim();
+  }
+  if (b.booking_decision != null) {
+    if (typeof b.booking_decision !== "string") {
+      return { ok: false, error: 'booking_decision must be a string: "yes" or "no"' };
+    }
+    const raw = b.booking_decision.trim().toLowerCase();
+    if (raw === "yes" || raw === "no") {
+      payload.booking_decision = raw;
+    } else {
+      return { ok: false, error: 'booking_decision must be "yes" or "no" (case-insensitive)' };
+    }
+  }
+  if (b.decline_reason != null) {
+    if (typeof b.decline_reason !== "string") return { ok: false, error: "decline_reason must be a string" };
+    payload.decline_reason = b.decline_reason.slice(0, 2000);
+  }
+  if (b.call_duration != null) {
+    const sec =
+      typeof b.call_duration === "number"
+        ? b.call_duration
+        : typeof b.call_duration === "string"
+          ? Number.parseFloat(b.call_duration)
+          : NaN;
+    if (Number.isNaN(sec) || sec < 0) {
+      return { ok: false, error: "call_duration must be a non-negative number (seconds)" };
+    }
+    payload.call_duration = sec;
+  }
+  if (b.number_of_counteroffers != null) {
+    const n =
+      typeof b.number_of_counteroffers === "number"
+        ? b.number_of_counteroffers
+        : typeof b.number_of_counteroffers === "string"
+          ? Number.parseInt(b.number_of_counteroffers, 10)
+          : NaN;
+    if (!Number.isInteger(n) || n < 0) {
+      return { ok: false, error: "number_of_counteroffers must be a non-negative integer" };
+    }
+    payload.number_of_counteroffers = n;
+  }
+  if (b.verified != null) {
+    if (typeof b.verified !== "boolean") return { ok: false, error: "verified must be a boolean" };
+    payload.verified = b.verified;
+  }
   if (b.occurred_at != null) {
     if (typeof b.occurred_at !== "string") return { ok: false, error: "occurred_at must be ISO string" };
     payload.occurred_at = b.occurred_at;
   }
-  if (b.load_id != null) {
-    if (typeof b.load_id !== "string") return { ok: false, error: "load_id must be string" };
-    payload.load_id = b.load_id;
+  if (b.carrier_name != null) {
+    if (typeof b.carrier_name !== "string") return { ok: false, error: "carrier_name must be a string" };
+    payload.carrier_name = b.carrier_name.trim().slice(0, 500);
   }
-  if (b.agreed_rate != null) {
-    if (typeof b.agreed_rate !== "number" || Number.isNaN(b.agreed_rate)) {
-      return { ok: false, error: "agreed_rate must be a number" };
+  if (b.sentiment_classification != null) {
+    if (typeof b.sentiment_classification !== "string") {
+      return { ok: false, error: "sentiment_classification must be a string" };
     }
-    payload.agreed_rate = b.agreed_rate;
+    payload.sentiment_classification = b.sentiment_classification.trim().slice(0, 500);
   }
-  if (b.listed_rate != null) {
-    if (typeof b.listed_rate !== "number" || Number.isNaN(b.listed_rate)) {
-      return { ok: false, error: "listed_rate must be a number" };
+  if (b.sentiment_reasoning != null) {
+    if (typeof b.sentiment_reasoning !== "string") {
+      return { ok: false, error: "sentiment_reasoning must be a string" };
     }
-    payload.listed_rate = b.listed_rate;
+    payload.sentiment_reasoning = b.sentiment_reasoning.slice(0, 4000);
   }
-  if (b.negotiation_rounds != null) {
-    if (typeof b.negotiation_rounds !== "number" || !Number.isInteger(b.negotiation_rounds)) {
-      return { ok: false, error: "negotiation_rounds must be an integer" };
-    }
-    payload.negotiation_rounds = b.negotiation_rounds;
-  }
-  if (b.notes != null) {
-    if (typeof b.notes !== "string") return { ok: false, error: "notes must be string" };
-    payload.notes = b.notes.slice(0, 2000);
-  }
+
   return { ok: true, data: payload };
 }
 

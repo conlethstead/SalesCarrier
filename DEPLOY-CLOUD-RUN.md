@@ -62,19 +62,41 @@ echo "Save this API_KEY for HappyRobot and your notes: $API_KEY"
 
 ## 4. Build and push the image
 
-From the **`metrics-dashboard/`** directory:
+From the **`metrics-dashboard/`** directory.
+
+### Option A — Local Docker (Docker Desktop)
+
+Install **[Docker Desktop for Mac](https://docs.docker.com/desktop/install/mac-install/)**, then:
 
 ```bash
 cd metrics-dashboard
+./scripts/rebuild-and-push.sh
+```
 
+Or manually:
+
+```bash
 export IMAGE="${REGION}-docker.pkg.dev/${PROJECT_ID}/carrier-images/${SERVICE_NAME}:v1"
 
 docker build \
   --build-arg "VITE_API_KEY=${API_KEY}" \
   -t "$IMAGE" .
 
+gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
 docker push "$IMAGE"
 ```
+
+### Option B — No local Docker (Cloud Build)
+
+Uses **`cloudbuild.yaml`**; only **`gcloud`** is required:
+
+```bash
+cd metrics-dashboard
+chmod +x scripts/build-via-cloud-build.sh
+./scripts/build-via-cloud-build.sh
+```
+
+This runs `gcloud builds submit` with **`VITE_API_KEY`** from **`.env`** as a substitution and pushes to Artifact Registry.
 
 ## 5. Deploy to Cloud Run
 
@@ -117,14 +139,41 @@ curl -sS "${RUN_URL}/api/health"
 curl -sS -X POST "${RUN_URL}/api/events" \
   -H "Content-Type: application/json" \
   -H "X-API-Key: ${API_KEY}" \
-  -d '{"call_id":"smoke-1","outcome":"booked","sentiment":"positive"}'
+  -d '{"reference_number":"SMOKE-1","booking_decision":"yes","verified":true}'
 ```
 
 Open **`RUN_URL`** in a browser for the dashboard (the UI was built with `VITE_API_KEY` matching `API_KEY`).
 
+## Rebuild after editing `.env` (local)
+
+With **`API_KEY`** and **`VITE_API_KEY`** set to the **same** value in **`metrics-dashboard/.env`**:
+
+```bash
+cd metrics-dashboard
+chmod +x scripts/rebuild-and-push.sh scripts/deploy-cloud-run.sh
+./scripts/rebuild-and-push.sh
+./scripts/deploy-cloud-run.sh REGION-docker.pkg.dev/PROJECT/REPO/SERVICE:TAG
+```
+
+The push script prints the full image URI to pass into **`deploy-cloud-run.sh`**. Override defaults with env vars: **`GCP_PROJECT_ID`**, **`GCP_REGION`**, **`CLOUD_RUN_SERVICE`** (e.g. `sales`), **`ARTIFACT_REPO`**.
+
 ## Changing the API key later
 
 If you only change **`API_KEY`** at runtime but **not** in the image, the SPA will still send the **old** embedded key. Rebuild the image with the new `VITE_API_KEY`, push, and deploy a new revision.
+
+## Troubleshooting
+
+**`Repository "carrier-images" not found`** — Create the Artifact Registry **Docker** repo once (or re-run **`./scripts/build-via-cloud-build.sh`**, which creates it automatically):
+
+```bash
+gcloud artifacts repositories create carrier-images \
+  --repository-format=docker \
+  --location=us-central1 \
+  --project=salescarrier \
+  --description="Carrier metrics Docker images"
+```
+
+Use your **`--project`** and **`--location`** if they differ.
 
 ## Optional: build in Cloud Build (no local Docker)
 

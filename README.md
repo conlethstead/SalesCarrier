@@ -14,22 +14,47 @@ React + TypeScript UI and a small **Express** API that **ingests** call outcome 
 
 ### Ingest body (`POST /api/events`)
 
+**Required**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `reference_number` | string | Load the caller asked about (e.g. `AAA11111`) |
+
+**Optional**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `mc_number` | string | Carrier MC number |
+| `booking_decision` | `"yes"` \| `"no"` | Whether they agreed to book |
+| `decline_reason` | string | If `booking_decision` is `no`, why (e.g. `rate too high`); omit or empty when `yes` |
+| `call_duration` | number | Length of call in **seconds** |
+| `number_of_counteroffers` | integer | How many times the assistant countered |
+| `verified` | boolean | Whether MC verification succeeded |
+| `carrier_name` | string | Legal name from MC verification (e.g. `B MARRON LOGISTICS LLC`) |
+| `sentiment_classification` | string | Assistant label (e.g. `Not interested`) |
+| `sentiment_reasoning` | string | Short explanation (stored up to 4000 chars) |
+| `occurred_at` | string | ISO 8601 time (defaults to server time) |
+
+`booking_decision` is case-insensitive (`Yes` / `no` OK). `call_duration` and `number_of_counteroffers` may be sent as strings from some workflows.
+
+Example:
+
 ```json
 {
-  "call_id": "call_01HZ…",
-  "occurred_at": "2026-04-10T18:00:00.000Z",
-  "outcome": "booked",
-  "sentiment": "positive",
-  "load_id": "LD-48291",
-  "agreed_rate": 1850,
-  "listed_rate": 1800,
-  "negotiation_rounds": 2,
-  "notes": "optional"
+  "reference_number": "AAA11111",
+  "mc_number": "123456",
+  "booking_decision": "no",
+  "decline_reason": "not interested",
+  "call_duration": 420,
+  "number_of_counteroffers": 2,
+  "verified": true,
+  "carrier_name": "B MARRON LOGISTICS LLC",
+  "sentiment_classification": "Not interested",
+  "sentiment_reasoning": "No transcript by default."
 }
 ```
 
-`outcome`: `booked` | `declined` | `no_match` | `failed_verification` | `abandoned` | `negotiated_no_deal`  
-`sentiment`: `positive` | `neutral` | `negative`
+Older **legacy** rows (with `call_id`, `outcome`, `sentiment`) already stored in `events.json` are still summarized for charts.
 
 Events are appended to `data/events.json` (configurable via `DATA_DIR`).
 
@@ -39,7 +64,7 @@ Events are appended to `data/events.json` (configurable via `DATA_DIR`).
 curl -sS -X POST http://127.0.0.1:3001/api/events \
   -H "Content-Type: application/json" \
   -H "X-API-Key: $API_KEY" \
-  -d '{"call_id":"demo-1","outcome":"booked","sentiment":"positive","load_id":"LD-1","agreed_rate":1900,"negotiation_rounds":1}'
+  -d '{"reference_number":"AAA11111","mc_number":"123456","booking_decision":"yes","call_duration":120,"number_of_counteroffers":1,"verified":true}'
 ```
 
 **Deployed (HTTPS):** same request with `https://<your-domain>/api/events` (Let’s Encrypt or other TLS).

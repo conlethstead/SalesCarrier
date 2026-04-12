@@ -157,7 +157,7 @@ docker compose -f docker-compose.prod.yml logs -f caddy
 curl -sS -X POST "https://<METRICS_DOMAIN>/api/events" \
   -H "Content-Type: application/json" \
   -H "X-API-Key: $API_KEY" \
-  -d '{"call_id":"smoke-1","outcome":"booked","sentiment":"positive","load_id":"LD-1","agreed_rate":1900}'
+  -d '{"reference_number":"SMOKE-1","mc_number":"123456","booking_decision":"yes","call_duration":90,"verified":true}'
 ```
 
 ## Persistence
