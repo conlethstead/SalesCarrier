@@ -28,14 +28,16 @@ React + TypeScript UI and a small **Express** API that **ingests** call outcome 
 | `booking_decision` | `"yes"` \| `"no"` | Whether they agreed to book |
 | `decline_reason` | string | If `booking_decision` is `no`, why (e.g. `rate too high`); omit or empty when `yes` |
 | `call_duration` | number | Length of call in **seconds** |
-| `number_of_counteroffers` | integer | How many times the assistant countered |
+| `number_of_counteroffers` | integer | How many times the assistant sent a counteroffer (aliases: `counter_offers`, `numberOfCounterOffers`) |
 | `verified` | boolean | Whether MC verification succeeded |
 | `carrier_name` | string | Legal name from MC verification (e.g. `B MARRON LOGISTICS LLC`) |
 | `sentiment_classification` | string | Assistant label (e.g. `Not interested`) |
 | `sentiment_reasoning` | string | Short explanation (stored up to 4000 chars) |
 | `occurred_at` | string | ISO 8601 time (defaults to server time) |
 
-`booking_decision` is case-insensitive (`Yes` / `no` OK). `call_duration` and `number_of_counteroffers` may be sent as strings from some workflows.
+`booking_decision` is case-insensitive (`Yes` / `no` OK). `call_duration` and **`number_of_counteroffers`** may be sent as strings from some workflows.
+
+**Counteroffers:** send **`number_of_counteroffers`** (snake_case). If your HTTP builder only allows camelCase, use **`numberOfCounterOffers`**; if it uses another snake name, **`counter_offers`** is accepted too. All map to the same field.
 
 Example:
 

@@ -75,15 +75,21 @@ function validatePayload(body: unknown): { ok: true; data: CallEventPayload } | 
     }
     payload.call_duration = sec;
   }
-  if (b.number_of_counteroffers != null) {
+  const counterRaw =
+    b.number_of_counteroffers ?? b.counter_offers ?? b.numberOfCounterOffers;
+  if (counterRaw != null) {
     const n =
-      typeof b.number_of_counteroffers === "number"
-        ? b.number_of_counteroffers
-        : typeof b.number_of_counteroffers === "string"
-          ? Number.parseInt(b.number_of_counteroffers, 10)
+      typeof counterRaw === "number"
+        ? counterRaw
+        : typeof counterRaw === "string"
+          ? Number.parseInt(counterRaw, 10)
           : NaN;
     if (!Number.isInteger(n) || n < 0) {
-      return { ok: false, error: "number_of_counteroffers must be a non-negative integer" };
+      return {
+        ok: false,
+        error:
+          "number_of_counteroffers (or counter_offers / numberOfCounterOffers) must be a non-negative integer",
+      };
     }
     payload.number_of_counteroffers = n;
   }
