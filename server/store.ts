@@ -7,7 +7,7 @@ import type {
   CarrierSentiment,
   MetricsSummary,
 } from "../shared/metrics.js";
-import { isLegacyRecord } from "../shared/metrics.js";
+import { counterofferCount, isLegacyRecord } from "../shared/metrics.js";
 
 const OUTCOMES: CallOutcome[] = [
   "booked",
@@ -89,8 +89,9 @@ export function computeSummary(limitRecent = 50): MetricsSummary {
   for (const e of events) {
     if (isLegacyRecord(e)) {
       if (e.negotiation_rounds != null && e.negotiation_rounds > 0) rounds.push(e.negotiation_rounds);
-    } else if (e.number_of_counteroffers != null && e.number_of_counteroffers > 0) {
-      rounds.push(e.number_of_counteroffers);
+    } else {
+      const n = counterofferCount(e);
+      if (n != null && n > 0) rounds.push(n);
     }
   }
   const avg_negotiation_rounds_when_negotiated =

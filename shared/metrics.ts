@@ -8,7 +8,12 @@ export interface CallEventPayload {
   decline_reason?: string;
   /** Call length in seconds */
   call_duration?: number;
-  /** How many times the assistant sent a counteroffer */
+  /** How many times the assistant sent a counteroffer (aliases normalized at ingest) */
+  counteroffers?: number;
+  /**
+   * Legacy name for `counteroffers`; may still appear on rows written before the rename.
+   * Not set by new ingest — use `counteroffers`.
+   */
   number_of_counteroffers?: number;
   /** Whether the carrier was verified via MC */
   verified?: boolean;
@@ -18,8 +23,23 @@ export interface CallEventPayload {
   sentiment_classification?: string;
   /** Short explanation for the classification */
   sentiment_reasoning?: string;
+  /** Equipment (e.g. "Dry Van") */
+  trailer?: string;
+  /** Lane description (e.g. "California to Texas") */
+  lane?: string;
+  /** Listed or agreed rate as provided by the workflow (often free text) */
+  listed_rate?: string;
+  /** How the carrier found the load */
+  how_load_was_found?: string;
   /** ISO 8601; defaults to server receive time if omitted */
   occurred_at?: string;
+}
+
+/** Counteroffer count for analytics/UI — prefers `counteroffers`, then legacy `number_of_counteroffers`. */
+export function counterofferCount(e: CallEventPayload): number | undefined {
+  if (e.counteroffers != null) return e.counteroffers;
+  if (e.number_of_counteroffers != null) return e.number_of_counteroffers;
+  return undefined;
 }
 
 export type CallOutcome =

@@ -80,7 +80,9 @@ export function RecentTable({ rows }: { rows: CallEventRecord[] }) {
                     <td style={td}>{r.booking_decision ?? "—"}</td>
                     <td style={td}>{r.decline_reason?.trim() ? r.decline_reason : "—"}</td>
                     <td style={td}>{r.call_duration != null ? `${r.call_duration}s` : "—"}</td>
-                    <td style={td}>{r.number_of_counteroffers ?? "—"}</td>
+                    <td style={td}>
+                      {r.counteroffers ?? r.number_of_counteroffers ?? "—"}
+                    </td>
                     <td style={td}>{r.verified === undefined ? "—" : r.verified ? "yes" : "no"}</td>
                     <td style={td}>{r.sentiment_classification ?? "—"}</td>
                     <td style={td} title={r.sentiment_reasoning ?? undefined}>

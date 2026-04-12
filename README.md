@@ -39,6 +39,8 @@ React + TypeScript UI and a small **Express** API that **ingests** call outcome 
 
 **Counteroffers:** send **`number_of_counteroffers`** (snake_case). If your HTTP builder only allows camelCase, use **`numberOfCounterOffers`**; if it uses another snake name, **`counter_offers`** is accepted too. All map to the same field.
 
+**All-string JSON:** Many workflow tools send **every value as a string** (e.g. `"420"`, `"true"`, `"no"`). That is supported: numbers are parsed, **`verified`** accepts `"true"` / `"false"` / `"yes"` / `"no"` / `"1"` / `"0"`, and **`booking_decision`** accepts `"yes"` / `"no"` case-insensitively.
+
 Example:
 
 ```json
