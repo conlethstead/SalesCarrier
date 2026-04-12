@@ -186,6 +186,9 @@ export function createApp() {
     res.json(computeSummary(75));
   });
 
+  /** load_id / reference_number: three uppercase letters + five digits (e.g. FDX10234). */
+  const loadIdPattern = /^[A-Z]{3}\d{5}$/;
+
   /**
    * Protected load search for HappyRobot / AI workflows (e.g. Cloud Run).
    * Header X-API-Key must match API_KEY.
@@ -204,11 +207,19 @@ export function createApp() {
       return;
     }
 
-    const referenceNumber = str(req.query.reference_number).trim() || str(req.query.load_id).trim();
+    const referenceNumberRaw = str(req.query.reference_number).trim() || str(req.query.load_id).trim();
+    const referenceNumber = referenceNumberRaw.toUpperCase();
     const equipmentRaw = str(req.query.equipment).trim() || str(req.query.equipment_type).trim();
     const laneRaw = str(req.query.lane).trim();
 
     if (referenceNumber) {
+      if (!loadIdPattern.test(referenceNumber)) {
+        res.status(400).json({
+          error: "Invalid reference_number",
+          detail: "Must be three uppercase letters followed by five digits (e.g. FDX10234).",
+        });
+        return;
+      }
       const { data, error } = await supabase
         .from("loads")
         .select("*")
@@ -280,7 +291,12 @@ export function createApp() {
   );
   if (dist) {
     app.use(express.static(dist));
-    app.get("*", (_req, res) => {
+    app.get("*", (req, res) => {
+      // Never serve the SPA for /api/* — avoids masking missing API routes with index.html (e.g. stale image).
+      if (req.path.startsWith("/api")) {
+        res.status(404).json({ error: "Not found", path: req.path });
+        return;
+      }
       res.sendFile(path.join(dist, "index.html"));
     });
   } else if (process.env.NODE_ENV === "production") {
