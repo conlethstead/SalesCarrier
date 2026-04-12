@@ -23,6 +23,10 @@ if [[ -z "${API_KEY:-}" ]]; then
   echo "API_KEY missing in .env"
   exit 1
 fi
+if [[ -z "${SUPABASE_URL:-}" ]] || [[ -z "${SUPABASE_SERVICE_ROLE_KEY:-}" ]]; then
+  echo "SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY missing in .env (required for GET /api/loads)"
+  exit 1
+fi
 
 IMAGE="${1:-}"
 if [[ -z "${IMAGE}" ]]; then
@@ -49,7 +53,7 @@ gcloud run deploy "${SERVICE}" \
   --region "${REGION}" \
   --platform managed \
   --allow-unauthenticated \
-  --set-env-vars "API_KEY=${API_KEY}" \
+  --set-env-vars "API_KEY=${API_KEY},SUPABASE_URL=${SUPABASE_URL},SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}" \
   --memory 512Mi \
   --cpu 1 \
   --min-instances 0 \

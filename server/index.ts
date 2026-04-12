@@ -7,6 +7,12 @@ import express from "express";
 import { fileURLToPath } from "node:url";
 import type { CallEventPayload } from "../shared/metrics.js";
 import { appendEvent, computeSummary } from "./store.js";
+import {
+  getSupabaseForLoads,
+  laneMatchesRow,
+  parseLaneFragments,
+  sanitizeLikeFragment,
+} from "./supabase-loads.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -178,6 +184,95 @@ export function createApp() {
 
   app.get("/api/summary", requireApiKey, (_req, res) => {
     res.json(computeSummary(75));
+  });
+
+  /**
+   * Protected load search for HappyRobot / AI workflows (e.g. Cloud Run).
+   * Header X-API-Key must match API_KEY.
+   *
+   * Query modes (exactly one):
+   * 1) reference_number — matches load_id (optional alias: load_id).
+   * 2) equipment + lane — equipment_type substring + lane (origin/destination); see parseLaneFragments.
+   */
+  app.get("/api/loads", requireApiKey, async (req, res) => {
+    const supabase = getSupabaseForLoads();
+    if (!supabase) {
+      res.status(503).json({
+        error: "Load search unavailable",
+        detail: "Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY on the server.",
+      });
+      return;
+    }
+
+    const referenceNumber = str(req.query.reference_number).trim() || str(req.query.load_id).trim();
+    const equipmentRaw = str(req.query.equipment).trim() || str(req.query.equipment_type).trim();
+    const laneRaw = str(req.query.lane).trim();
+
+    if (referenceNumber) {
+      const { data, error } = await supabase
+        .from("loads")
+        .select("*")
+        .eq("load_id", referenceNumber)
+        .order("pickup_datetime", { ascending: true });
+
+      if (error) {
+        console.error("Supabase loads query:", error.message);
+        res.status(500).json({ error: "Failed to query loads", detail: error.message });
+        return;
+      }
+      res.json({ loads: data ?? [] });
+      return;
+    }
+
+    const equipment = sanitizeLikeFragment(equipmentRaw);
+    if (!equipment || !laneRaw) {
+      res.status(400).json({
+        error: "Invalid query",
+        detail:
+          "Provide either reference_number (load id) or both equipment and lane query parameters.",
+      });
+      return;
+    }
+
+    const lane = parseLaneFragments(laneRaw);
+
+    if (lane.kind === "pair") {
+      const { data, error } = await supabase
+        .from("loads")
+        .select("*")
+        .ilike("equipment_type", `%${equipment}%`)
+        .ilike("origin", `%${lane.origin}%`)
+        .ilike("destination", `%${lane.dest}%`)
+        .order("pickup_datetime", { ascending: true });
+
+      if (error) {
+        console.error("Supabase loads query:", error.message);
+        res.status(500).json({ error: "Failed to query loads", detail: error.message });
+        return;
+      }
+      res.json({ loads: data ?? [] });
+      return;
+    }
+
+    if (!lane.text) {
+      res.status(400).json({ error: "Invalid query", detail: "lane must not be empty." });
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from("loads")
+      .select("*")
+      .ilike("equipment_type", `%${equipment}%`)
+      .order("pickup_datetime", { ascending: true });
+
+    if (error) {
+      console.error("Supabase loads query:", error.message);
+      res.status(500).json({ error: "Failed to query loads", detail: error.message });
+      return;
+    }
+
+    const rows = (data ?? []).filter((row) => laneMatchesRow(row, lane.text));
+    res.json({ loads: rows });
   });
 
   const dist = [path.join(__dirname, "..", "dist"), path.join(__dirname, "..", "..", "dist")].find(
