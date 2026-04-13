@@ -160,7 +160,7 @@ export function appendEvent(payload: CallEventPayload): CallEventRecord {
 }
 
 export function computeSummary(
-  limitRecent = 50,
+  limitRecent = 100,
   environment: MetricsEnvironmentFilter = "all"
 ): MetricsSummaryComputed {
   const events = loadEvents().filter((e) => eventMatchesEnvironmentFilter(e, environment));

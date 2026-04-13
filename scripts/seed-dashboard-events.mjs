@@ -12,6 +12,11 @@
  * Loads metrics-dashboard/.env when present (API_KEY, optional METRICS_SEED_BASE_URL).
  *
  * Sends 30 distinct POST bodies (mixed envs, outcomes, load shapes, and field aliases).
+ *
+ * Booked rows (`booking_decision: "yes"`) always include `agreed_rate` (string or number).
+ *
+ * Dashboard "abandoned" outcome = omit booking_decision (not booking_decision "no" + abandoned flag).
+ * All counteroffer fields are 0–3 (workflow never exceeds 3).
  */
 
 import { config } from "dotenv";
@@ -21,10 +26,7 @@ import path from "node:path";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 config({ path: path.join(__dirname, "..", ".env") });
 
-const BASE_URL = (process.env.METRICS_SEED_BASE_URL ?? process.env.VITE_API_BASE_URL ?? "http://localhost:3001").replace(
-  /\/$/,
-  ""
-);
+const BASE_URL = "https://sales-w6cygkshra-uc.a.run.app/";
 const API_KEY = process.env.API_KEY ?? "";
 
 const dryRun = process.argv.includes("--dry-run");
@@ -69,7 +71,7 @@ const CASES = [
       mc_number: "MC-884421",
       booking_decision: "yes",
       call_duration: 420,
-      counteroffers: 1,
+      counteroffers: 3,
       verified: true,
       carrier_name: "Acme Trucking LLC",
       sentiment_classification: "Positive",
@@ -140,19 +142,27 @@ const CASES = [
     },
   },
   {
-    name: "abandoned mid-call — negative sentiment",
+    name: "abandoned — no booking_decision after counteroffers (true dashboard abandoned)",
     body: {
       environment: "staging",
       reference_number: "FDX10236",
       mc_number: 999888,
-      booking_decision: "no",
-      call_duration: 95,
+      call_duration: 540,
+      counteroffers: 3,
       abandoned: "yes",
       carrier_name: "Quick Exit Logistics",
       sentiment_classification: "Negative",
-      sentiment_reasoning: "Hung up after hearing lane details.",
+      sentiment_reasoning: "Multiple rate rounds; caller went silent and never confirmed yes/no.",
       lane: "Denver, CO → Seattle, WA",
-      load: [],
+      load: [
+        baseLoad({
+          load_id: "FDX10236",
+          origin: "Denver, CO",
+          destination: "Seattle, WA",
+          loadboard_rate: 2850,
+          miles: 1305,
+        }),
+      ],
       occurred_at: occurredDaysAgo(2, 11),
     },
   },
@@ -165,7 +175,7 @@ const CASES = [
       booking_decision: "no",
       decline_reason: "Equipment mismatch",
       call_duration: 240,
-      number_of_counteroffers: 0,
+      number_of_counteroffers: 3,
       verified: "yes",
       carrier_name: "Dev Carrier Co",
       sentiment_classification: "neutral",
@@ -191,7 +201,7 @@ const CASES = [
       booking_decision: "no",
       decline_reason: "Chose different load from batch",
       call_duration: 512,
-      counteroffers: 2,
+      counteroffers: 3,
       carrier_name: "Batch Review Transport",
       sentiment_classification: "Positive",
       sentiment_reasoning: "Engaged with options; polite decline.",
@@ -243,7 +253,7 @@ const CASES = [
     },
   },
   {
-    name: "verified boolean false, step_of_emotion",
+    name: "verified boolean false, step_of_emotion negotiation",
     body: {
       environment: "production",
       reference_number: "FDX10240",
@@ -251,7 +261,7 @@ const CASES = [
       call_duration: 300,
       verified: false,
       carrier_name: "Unverified Caller",
-      step_of_emotion: "frustration",
+      step_of_emotion: "negotiation",
       sentiment_classification: "Negative",
       sentiment_reasoning: "Expressed impatience with hold time.",
       load: [baseLoad({ load_id: "FDX10240", loadboard_rate: 2200 })],
@@ -294,7 +304,7 @@ const CASES = [
       mc_number: "MC-REE-99",
       booking_decision: "yes",
       call_duration: 610,
-      counteroffers: 2,
+      counteroffers: 3,
       verified: "true",
       carrier_name: "Cold Chain Partners",
       sentiment_classification: "positive",
@@ -328,7 +338,7 @@ const CASES = [
       booking_decision: "no",
       decline_reason: "No driver available until next week",
       call_duration: 156,
-      counteroffers: 1,
+      counteroffers: 3,
       carrier_name: "Weekend Gap Logistics",
       sentiment_classification: "Neutral",
       lane: "Nashville, TN → Charlotte, NC",
@@ -352,6 +362,7 @@ const CASES = [
       booking_decision: "no",
       decline_reason: "Does not run that lane",
       call_duration: 72,
+      counteroffers: 1,
       carrier_name: "Regional Only Carriers",
       sentiment_classification: "Neutral",
       sentiment_reasoning: "Polite; prefers west coast only.",
@@ -368,7 +379,7 @@ const CASES = [
       booking_decision: "no",
       decline_reason: "Already booked with another broker",
       call_duration: 205,
-      counteroffers: 0,
+      counteroffers: 2,
       carrier_name: "Double Booked LLC",
       sentiment_classification: "Negative",
       load: [baseLoad({ load_id: "FDX10245", origin: "St. Louis, MO", destination: "Detroit, MI", loadboard_rate: 2100, miles: 520 })],
@@ -376,14 +387,14 @@ const CASES = [
     },
   },
   {
-    name: "high counteroffers — still declined",
+    name: "negotiated — still declined",
     body: {
       environment: "production",
       reference_number: "FDX10246",
       booking_decision: "no",
       decline_reason: "Still below needed RPM after counters",
       call_duration: 890,
-      counteroffers: 6,
+      counteroffers: 3,
       carrier_name: "Hard Negotiator Inc",
       sentiment_classification: "Neutral",
       sentiment_reasoning: "Long back-and-forth; ended professionally.",
@@ -399,11 +410,13 @@ const CASES = [
       mc_number: "445566",
       booking_decision: "yes",
       call_duration: 1840,
-      counteroffers: 4,
+      counteroffers: 3,
       verified: true,
       carrier_name: "Due Diligence Trucking",
       sentiment_classification: "Positive",
       sentiment_reasoning: "Asked about lumper, detention, and fuel surcharge.",
+      listed_rate: "$1,350",
+      agreed_rate: "$1,375",
       load: [baseLoad({ load_id: "FDX10247", origin: "Salt Lake City, UT", destination: "Las Vegas, NV", loadboard_rate: 1350, miles: 420 })],
       occurred_at: occurredDaysAgo(13, 11),
     },
@@ -416,6 +429,7 @@ const CASES = [
       booking_decision: "no",
       decline_reason: "Need team drivers — not available",
       call_duration: 267,
+      counteroffers: 3,
       sentimentClassification: "Negative",
       sentimentReasoning: "Frustrated that listing did not mention team required.",
       carrier_name: "Solo Only Express",
@@ -431,7 +445,7 @@ const CASES = [
       booking_decision: "no",
       decline_reason: "Timing on pickup window",
       call_duration: 334,
-      counter_offers: 2,
+      counter_offers: 3,
       carrier_name: "Alias Counter Test Co",
       sentiment_classification: "Neutral",
       load: [baseLoad({ load_id: "FDX10249", origin: "Omaha, NE", destination: "Oklahoma City, OK", loadboard_rate: 1550, miles: 455 })],
@@ -446,7 +460,7 @@ const CASES = [
       booking_decision: "no",
       decline_reason: "Fuel surcharge structure",
       call_duration: 290,
-      numberOfCounterOffers: 5,
+      numberOfCounterOffers: 3,
       carrier_name: "Camel Case Logistics",
       sentiment_classification: "Neutral",
       load: [baseLoad({ load_id: "FDX10250", loadboard_rate: 2680, miles: 890 })],
@@ -461,9 +475,11 @@ const CASES = [
       mc_number: "990011",
       booking_decision: "yes",
       call_duration: 355,
+      counteroffers: 2,
       verified: 1,
       carrier_name: "Numeric Verified Trucking",
       sentiment_classification: "Positive",
+      agreed_rate: "875",
       load: [baseLoad({ load_id: "FDX10251", origin: "Baltimore, MD", destination: "Richmond, VA", loadboard_rate: 875, miles: 185 })],
       occurred_at: occurredDaysAgo(16, 9),
     },
@@ -476,6 +492,7 @@ const CASES = [
       booking_decision: "no",
       decline_reason: "Does not haul oversize without permits in hand",
       call_duration: 412,
+      counteroffers: 3,
       trailer: "Flatbed",
       carrier_name: "Permit Picky Haulers",
       sentiment_classification: "Neutral",
@@ -500,6 +517,7 @@ const CASES = [
       booking_decision: "no",
       decline_reason: "MC could not be confirmed",
       call_duration: 140,
+      counteroffers: 1,
       failed_verification: "yes",
       carrier_name: "Questionable MC Transport",
       sentiment_classification: "Negative",
@@ -508,13 +526,14 @@ const CASES = [
     },
   },
   {
-    name: "abandoned — no after hold",
+    name: "declined — disconnected after hold (booking_decision no)",
     body: {
       environment: "production",
       reference_number: "FDX10254",
       booking_decision: "no",
+      decline_reason: "Line dropped during hold — treated as no booking",
       call_duration: 430,
-      abandoned: "yes",
+      counteroffers: 3,
       carrier_name: "Hold Time Hangup LLC",
       sentiment_classification: "Negative",
       sentiment_reasoning: "Disconnected during long hold.",
@@ -530,6 +549,7 @@ const CASES = [
       booking_decision: "no",
       decline_reason: "System timeout pulling load",
       call_duration: 55,
+      counteroffers: 1,
       loading_error: "yes",
       sentiment_classification: "Neutral",
       load: "",
@@ -537,16 +557,18 @@ const CASES = [
     },
   },
   {
-    name: "step_of_emotion — calm positive",
+    name: "step_of_emotion — calm positive (pitch)",
     body: {
       environment: "development",
       reference_number: "FDX10256",
       booking_decision: "yes",
       call_duration: 275,
+      counteroffers: 1,
       verified: true,
-      step_of_emotion: "satisfaction",
+      step_of_emotion: "pitch",
       carrier_name: "Calm Closers Inc",
       sentiment_classification: "Positive",
+      agreed_rate: "$1,200",
       load: [baseLoad({ load_id: "FDX10256", origin: "Tucson, AZ", destination: "El Paso, TX", loadboard_rate: 1200, miles: 315 })],
       occurred_at: occurredDaysAgo(21, 14),
     },
@@ -559,6 +581,7 @@ const CASES = [
       booking_decision: "no",
       decline_reason: "Need weight confirmation from shipper",
       call_duration: 188,
+      counteroffers: 3,
       carrier_name: "Detail Oriented Carriers",
       sentiment_classification: "Neutral",
       load: [
@@ -580,6 +603,7 @@ const CASES = [
       booking_decision: "no",
       decline_reason: "Listed rate non-negotiable for them",
       call_duration: 142,
+      counteroffers: 2,
       listed_rate: "$1,875 all-in",
       carrier_name: "Take It Or Leave It Trucking",
       sentiment_classification: "Neutral",
@@ -595,10 +619,12 @@ const CASES = [
       mc_number: "334455",
       booking_decision: "yes",
       call_duration: 320,
+      counteroffers: 1,
       verified: true,
       how_load_was_found: "Referral from another carrier",
       carrier_name: "Network Effect Logistics",
       sentiment_classification: "Positive",
+      agreed_rate: "1425",
       load: [baseLoad({ load_id: "FDX10259", origin: "Little Rock, AR", destination: "Jackson, MS", loadboard_rate: 1425, miles: 305 })],
       occurred_at: occurredDaysAgo(24, 9),
     },
@@ -611,6 +637,7 @@ const CASES = [
       booking_decision: "no",
       decline_reason: "Does not sign broker quick-pay terms",
       call_duration: 226,
+      counteroffers: 3,
       carrier_name: "Policy First Transport",
       sentiment_classification: "Negative",
       load: [baseLoad({ load_id: "FDX10260", loadboard_rate: 2600, miles: 720 })],
@@ -630,6 +657,7 @@ const CASES = [
       carrier_name: "Speed Close Carriers",
       sentiment_classification: "Positive",
       sentiment_reasoning: "Knew the lane; minimal questions.",
+      agreed_rate: "$950",
       load: [baseLoad({ load_id: "FDX10261", origin: "Spokane, WA", destination: "Seattle, WA", loadboard_rate: 950, miles: 280 })],
       occurred_at: occurredDaysAgo(26, 7),
     },

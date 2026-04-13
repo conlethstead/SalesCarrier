@@ -334,7 +334,7 @@ export function createApp() {
       });
       return;
     }
-    const computed = computeSummary(75, envFilter);
+    const computed = computeSummary(100, envFilter);
     const recent = buildRecentCallEntries(computed.recent);
     res.json({ ...computed, recent });
   });

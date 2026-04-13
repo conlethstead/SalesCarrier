@@ -11,7 +11,6 @@ import { recentCallEntriesToCsv } from "../../shared/callExportCsv";
 import { counterofferCount } from "../../shared/metrics";
 
 const LANE_PREVIEW = 48;
-const LOAD_REF_PATTERN = /^[A-Z]{3}\d{5}$/;
 
 type TableFilters = {
   timeFrom: string;
@@ -104,6 +103,21 @@ function formatBookingDecision(v: string | undefined): string {
   return "—";
 }
 
+/** Load ref column: show id only, never multi-line or ingest/error prose. */
+function loadRefTableCell(r: CallEventRecord): string {
+  const full = isLegacyRecord(r)
+    ? (r.load_id?.trim() || String(r.call_id ?? "").trim())
+    : (r.reference_number?.trim() ?? "");
+  if (!full) return "—";
+  const line = full.split(/\r?\n/)[0]?.trim() ?? "";
+  if (!line) return "—";
+  if (/no load\s+in\s+payload|payload\s+matches\s+reference/i.test(line)) {
+    const id = full.match(/\b([A-Z]{3}\d{5})\b/i);
+    return id ? id[1].toUpperCase() : "—";
+  }
+  return line;
+}
+
 function environmentCellLabel(e: CallEventRecord): string {
   const x = recordEnvironment(e);
   return x.charAt(0).toUpperCase() + x.slice(1);
@@ -145,10 +159,11 @@ function filterCarrierText(row: RecentCallEntry): string {
 
 function filterLoadRefText(row: RecentCallEntry): string {
   const r = row.event;
-  if (isLegacyRecord(r)) {
-    return (r.load_id?.trim() || r.call_id || "").trim();
-  }
-  return r.reference_number?.trim() ?? "";
+  const cell = loadRefTableCell(r);
+  const raw = isLegacyRecord(r)
+    ? (r.load_id?.trim() || String(r.call_id ?? "").trim())
+    : (r.reference_number?.trim() ?? "");
+  return [cell === "—" ? "" : cell, raw].filter(Boolean).join(" ");
 }
 
 function filterLaneText(row: RecentCallEntry): string {
@@ -381,12 +396,12 @@ export function RecentTable({
             <tr style={{ textAlign: "left", color: "var(--muted)" }}>
               <th style={th}>Time</th>
               <th style={th}>Carrier</th>
-              <th style={th}>Load ref</th>
-              <th style={th}>Lane</th>
+              <th style={thLoadRef}>Load ref</th>
+              <th style={thLane}>Lane</th>
               <th style={th}>Equipment</th>
               <th style={th}>Listed rate</th>
               <th style={th}>Agreed rate</th>
-              <th style={th}>Outcome</th>
+              <th style={th}>Booked?</th>
               <th style={th}>Sentiment</th>
               <th style={th}>Env</th>
               <th style={{ ...th, width: "3.5rem" }} aria-label="Details" />
@@ -412,7 +427,6 @@ export function RecentTable({
               const key = rowKey(row, rowIndex);
               const expanded = !!open[key];
               const load = row.load;
-              const mismatchMessage = loadMismatchMessage(row);
               return (
                 <Fragment key={key}>
                   <tr style={{ borderTop: "1px solid var(--border)" }}>
@@ -420,11 +434,10 @@ export function RecentTable({
                     {isLegacyRecord(r) ? (
                       <>
                         <td style={td}>—</td>
-                        <td style={{ ...td, fontFamily: "var(--mono)", fontSize: "0.8rem" }}>
-                          <div>{r.load_id?.trim() || r.call_id}</div>
-                          {mismatchMessage && <div style={rowError}>{mismatchMessage}</div>}
+                        <td style={{ ...tdLoadRef, fontFamily: "var(--mono)", fontSize: "0.8rem" }}>
+                          {loadRefTableCell(r)}
                         </td>
-                        <td style={td} title={load ? laneFull(load) : undefined}>
+                        <td style={tdLane} title={load ? laneFull(load) : undefined}>
                           {load ? lanePreview(load) : "—"}
                         </td>
                         <td style={td}>{load?.equipment_type ?? "—"}</td>
@@ -441,11 +454,10 @@ export function RecentTable({
                     ) : (
                       <>
                         <td style={td}>{r.carrier_name?.trim() ? r.carrier_name : "—"}</td>
-                        <td style={{ ...td, fontFamily: "var(--mono)", fontSize: "0.8rem" }}>
-                          <div>{r.reference_number?.trim() || "—"}</div>
-                          {mismatchMessage && <div style={rowError}>{mismatchMessage}</div>}
+                        <td style={{ ...tdLoadRef, fontFamily: "var(--mono)", fontSize: "0.8rem" }}>
+                          {loadRefTableCell(r)}
                         </td>
-                        <td style={td} title={load ? laneFull(load) : undefined}>
+                        <td style={tdLane} title={load ? laneFull(load) : undefined}>
                           {load ? lanePreview(load) : "—"}
                         </td>
                         <td style={td}>{load?.equipment_type ?? "—"}</td>
@@ -484,8 +496,6 @@ export function RecentTable({
                               ))}
                             </div>
                           </>
-                        ) : mismatchMessage ? (
-                          <div style={detailError}>{mismatchMessage}</div>
                         ) : (
                           <div style={{ ...sectionTitle, marginBottom: "0.35rem" }}>
                             Load: none in payload (send <code style={codeInline}>load[]</code> with{" "}
@@ -637,7 +647,7 @@ export function RecentTable({
               />
             </div>
             <div>
-              <div style={filterLabel}>Outcome</div>
+              <div style={filterLabel}>Booked?</div>
               <input
                 type="search"
                 value={filters.outcome}
@@ -787,21 +797,6 @@ function sentimentCell(r: CallEventRecord): JSX.Element {
       <div>{label || "—"}</div>
     </div>
   );
-}
-
-function normalizedLoadRef(r: CallEventRecord): string | null {
-  const raw = isLegacyRecord(r)
-    ? r.load_id?.trim() || ""
-    : r.reference_number?.trim() ?? "";
-  const id = raw.toUpperCase();
-  return LOAD_REF_PATTERN.test(id) ? id : null;
-}
-
-function loadMismatchMessage(row: RecentCallEntry): string | null {
-  if (row.load) return null;
-  const id = normalizedLoadRef(row.event);
-  if (!id) return null;
-  return `No load in payload matches reference ${id}.`;
 }
 
 function rowKey(row: RecentCallEntry, index: number): string {
@@ -963,6 +958,31 @@ const td: CSSProperties = {
   maxWidth: "12rem",
 };
 
+/** Narrow column + tight gutter before Lane so ref IDs don’t leave a wide empty band. */
+const thLoadRef: CSSProperties = {
+  ...th,
+  width: "1%",
+  paddingRight: "0.35rem",
+};
+
+const tdLoadRef: CSSProperties = {
+  ...td,
+  width: "1%",
+  paddingRight: "0.35rem",
+  whiteSpace: "nowrap",
+  maxWidth: "10rem",
+};
+
+const thLane: CSSProperties = {
+  ...th,
+  paddingLeft: "0.35rem",
+};
+
+const tdLane: CSSProperties = {
+  ...td,
+  paddingLeft: "0.35rem",
+};
+
 const expandBtn: CSSProperties = {
   background: "transparent",
   border: "1px solid var(--border)",
@@ -998,20 +1018,6 @@ const detailValue: CSSProperties = {
   wordBreak: "break-word",
   fontFamily: "var(--mono)",
   fontSize: "0.78rem",
-};
-
-const rowError: CSSProperties = {
-  marginTop: "0.3rem",
-  color: "var(--danger)",
-  fontFamily: "var(--font)",
-  fontSize: "0.72rem",
-  lineHeight: 1.25,
-};
-
-const detailError: CSSProperties = {
-  ...sectionTitle,
-  color: "var(--danger)",
-  marginBottom: "0.35rem",
 };
 
 const codeInline: CSSProperties = {
