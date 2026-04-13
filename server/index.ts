@@ -145,6 +145,8 @@ function parseLoadRow(v: unknown, index: number): { ok: true; row: SupabaseLoadR
 
 function parseLoadArray(v: unknown): { ok: true; rows: SupabaseLoadRow[] } | { ok: false; error: string } {
   if (v == null) return { ok: true, rows: [] };
+  // Workflows often send every field as a string; "" means "no load" like a missing value.
+  if (typeof v === "string" && str(v).trim() === "") return { ok: true, rows: [] };
   if (!Array.isArray(v)) return { ok: false, error: "load must be an array when provided" };
   const rows: SupabaseLoadRow[] = [];
   for (let i = 0; i < v.length; i++) {
@@ -258,7 +260,7 @@ function validatePayload(body: unknown): { ok: true; data: CallEventPayload } | 
   if (b.how_load_was_found != null && str(b.how_load_was_found) !== "") {
     payload.how_load_was_found = str(b.how_load_was_found).trim().slice(0, 2000);
   }
-  if (b.agreed_rate != null) {
+  if (b.agreed_rate != null && str(b.agreed_rate).trim() !== "") {
     payload.agreed_rate = str(b.agreed_rate).trim().slice(0, 200);
   }
   if (b.abandoned != null && str(b.abandoned) !== "") {
