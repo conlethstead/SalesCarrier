@@ -9,12 +9,14 @@ import type {
 } from "../shared/metrics.js";
 import {
   counterofferCount,
+  eventMatchesEnvironmentFilter,
   isAffirmativeWorkflowField,
   isLegacyRecord,
   isWorkflowPlaceholder,
   parseCurrencyNumber,
   sentimentFromWorkflowPayload,
 } from "../shared/metrics.js";
+import type { MetricsEnvironmentFilter } from "../shared/metrics.js";
 
 const OUTCOMES: CallOutcome[] = [
   "booked",
@@ -157,8 +159,11 @@ export function appendEvent(payload: CallEventPayload): CallEventRecord {
   return record;
 }
 
-export function computeSummary(limitRecent = 50): MetricsSummaryComputed {
-  const events = loadEvents();
+export function computeSummary(
+  limitRecent = 50,
+  environment: MetricsEnvironmentFilter = "all"
+): MetricsSummaryComputed {
+  const events = loadEvents().filter((e) => eventMatchesEnvironmentFilter(e, environment));
   const by_outcome = Object.fromEntries(
     OUTCOMES.map((o) => [o, 0])
   ) as Record<CallOutcome, number>;

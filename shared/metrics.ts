@@ -16,6 +16,34 @@ export interface SupabaseLoadRow {
   created_at: string;
 }
 
+/** Deployment / ingest environment for metrics segmentation. */
+export type MetricsEnvironment = "production" | "staging" | "development";
+
+/** API and UI filter: specific env or all records. */
+export type MetricsEnvironmentFilter = MetricsEnvironment | "all";
+
+const METRICS_ENV_ALIASES: Record<string, MetricsEnvironment> = {
+  production: "production",
+  staging: "staging",
+  development: "development",
+};
+
+/** Normalize workflow or env-file strings to a canonical environment. */
+export function parseMetricsEnvironment(raw: string): MetricsEnvironment | null {
+  const k = raw.trim().toLowerCase();
+  return METRICS_ENV_ALIASES[k] ?? null;
+}
+
+/** Parse `environment` query param for GET /api/summary and export. Invalid values yield null. */
+export function parseMetricsEnvironmentFilterParam(raw: unknown): MetricsEnvironmentFilter | null {
+  if (raw == null || raw === "") return "all";
+  const s = Array.isArray(raw) ? raw[0] : raw;
+  if (typeof s !== "string") return null;
+  const t = s.trim().toLowerCase();
+  if (t === "all") return "all";
+  return parseMetricsEnvironment(t);
+}
+
 /** Ingest body for POST /api/events. */
 export interface CallEventPayload {
   reference_number?: string;
@@ -60,6 +88,11 @@ export interface CallEventPayload {
   load?: SupabaseLoadRow[];
   /** ISO 8601; defaults to server receive time if omitted */
   occurred_at?: string;
+  /**
+   * Set from JSON body or server `METRICS_ENVIRONMENT` at ingest.
+   * Older rows may omit this (treated as production for analytics).
+   */
+  environment?: MetricsEnvironment;
 }
 
 /** Counteroffer count for analytics/UI — prefers `counteroffers`, then legacy `number_of_counteroffers`. */
@@ -136,6 +169,22 @@ export function isLegacyRecord(
   r: CallEventRecord
 ): r is LegacyCallEvent & { received_at: string; occurred_at: string } {
   return "call_id" in r && typeof (r as LegacyCallEvent).call_id === "string";
+}
+
+/** Resolved environment for analytics; legacy rows and missing/invalid env count as production. */
+export function recordEnvironment(e: CallEventRecord): MetricsEnvironment {
+  if (isLegacyRecord(e)) return "production";
+  const v = e.environment;
+  if (v === "production" || v === "staging" || v === "development") return v;
+  return "production";
+}
+
+export function eventMatchesEnvironmentFilter(
+  e: CallEventRecord,
+  filter: MetricsEnvironmentFilter
+): boolean {
+  if (filter === "all") return true;
+  return recordEnvironment(e) === filter;
 }
 
 /** HappyRobot-style template placeholders are not real values. */

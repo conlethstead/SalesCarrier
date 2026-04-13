@@ -1,21 +1,29 @@
 import { useCallback, useEffect, useState, type CSSProperties } from "react";
 import { fetchSummary } from "./api";
-import type { MetricsSummary } from "./types";
+import type { MetricsEnvironmentFilter, MetricsSummary } from "./types";
 import { KpiRow } from "./components/KpiRow";
 import { OutcomeChart } from "./components/OutcomeChart";
 import { SentimentChart } from "./components/SentimentChart";
 import { RecentTable } from "./components/RecentTable";
 
+const ENVIRONMENT_OPTIONS: { value: MetricsEnvironmentFilter; label: string }[] = [
+  { value: "all", label: "All environments" },
+  { value: "production", label: "Production" },
+  { value: "staging", label: "Staging" },
+  { value: "development", label: "Development" },
+];
+
 export default function App() {
   const [data, setData] = useState<MetricsSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [environment, setEnvironment] = useState<MetricsEnvironmentFilter>("all");
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const s = await fetchSummary();
+      const s = await fetchSummary(environment);
       setData(s);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load metrics");
@@ -23,7 +31,7 @@ export default function App() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [environment]);
 
   useEffect(() => {
     void load();
@@ -38,7 +46,22 @@ export default function App() {
           <h1 style={{ fontSize: "1.35rem" }}>Inbound carrier sales</h1>
           <p style={subtitle}>Assistant outcomes, sentiment, and statistics</p>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", flexWrap: "wrap" }}>
+          <label style={envLabelWrap}>
+            <span style={envLabelText}>Environment</span>
+            <select
+              value={environment}
+              onChange={(e) => setEnvironment(e.target.value as MetricsEnvironmentFilter)}
+              style={selectStyle}
+              aria-label="Filter metrics by environment"
+            >
+              {ENVIRONMENT_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          </label>
           <button type="button" onClick={() => void load()} style={btn}>
             Refresh
           </button>
@@ -73,7 +96,7 @@ export default function App() {
             <OutcomeChart summary={data} />
             <SentimentChart summary={data} />
           </div>
-          <RecentTable rows={data.recent} />
+          <RecentTable rows={data.recent} environmentFilter={environment} />
         </>
       )}
     </div>
@@ -128,4 +151,26 @@ const code: CSSProperties = {
   background: "var(--surface)",
   padding: "0.1em 0.35em",
   borderRadius: "4px",
+};
+
+const envLabelWrap: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: "0.45rem",
+};
+
+const envLabelText: CSSProperties = {
+  fontSize: "0.85rem",
+  color: "var(--muted)",
+};
+
+const selectStyle: CSSProperties = {
+  background: "var(--surface2)",
+  border: "1px solid var(--border)",
+  color: "var(--text)",
+  padding: "0.4rem 0.65rem",
+  borderRadius: "8px",
+  fontSize: "0.9rem",
+  cursor: "pointer",
+  minWidth: "11rem",
 };

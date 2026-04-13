@@ -1,6 +1,11 @@
 import { Fragment, useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
-import type { CallEventRecord, RecentCallEntry, SupabaseLoadRow } from "../types";
-import { isLegacyRecord } from "../types";
+import type {
+  CallEventRecord,
+  MetricsEnvironmentFilter,
+  RecentCallEntry,
+  SupabaseLoadRow,
+} from "../types";
+import { isLegacyRecord, recordEnvironment } from "../types";
 import { fetchAllCallsCsvBlob } from "../api";
 import { recentCallEntriesToCsv } from "../../shared/callExportCsv";
 import { counterofferCount } from "../../shared/metrics";
@@ -97,6 +102,15 @@ function formatBookingDecision(v: string | undefined): string {
   if (v === "yes") return "Yes";
   if (v === "no") return "No";
   return "—";
+}
+
+function environmentCellLabel(e: CallEventRecord): string {
+  const x = recordEnvironment(e);
+  return x.charAt(0).toUpperCase() + x.slice(1);
+}
+
+function environmentDetailLabel(e: CallEventRecord): string {
+  return environmentCellLabel(e);
 }
 
 function formatAgreedRateCell(r: CallEventRecord): string {
@@ -216,7 +230,14 @@ function triggerBrowserDownload(blob: Blob, filename: string) {
   URL.revokeObjectURL(url);
 }
 
-export function RecentTable({ rows }: { rows: RecentCallEntry[] }) {
+export function RecentTable({
+  rows,
+  environmentFilter = "all",
+}: {
+  rows: RecentCallEntry[];
+  /** Matches dashboard environment filter (used for “CSV all calls”). */
+  environmentFilter?: MetricsEnvironmentFilter;
+}) {
   const [open, setOpen] = useState<Record<string, boolean>>({});
   const [filters, setFilters] = useState<TableFilters>(emptyFilters);
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -237,13 +258,14 @@ export function RecentTable({ rows }: { rows: RecentCallEntry[] }) {
   const downloadAllCsv = useCallback(async () => {
     setExportAllBusy(true);
     try {
-      const blob = await fetchAllCallsCsvBlob();
+      const blob = await fetchAllCallsCsvBlob(environmentFilter);
       const stamp = new Date().toISOString().slice(0, 10);
-      triggerBrowserDownload(blob, `carrier-calls-all-${stamp}.csv`);
+      const suffix = environmentFilter === "all" ? "all" : environmentFilter;
+      triggerBrowserDownload(blob, `carrier-calls-${suffix}-${stamp}.csv`);
     } finally {
       setExportAllBusy(false);
     }
-  }, []);
+  }, [environmentFilter]);
 
   const setFilter = <K extends keyof TableFilters>(key: K, value: TableFilters[K]) => {
     setFilters((prev) => ({ ...prev, [key]: value }));
@@ -366,6 +388,7 @@ export function RecentTable({ rows }: { rows: RecentCallEntry[] }) {
               <th style={th}>Agreed rate</th>
               <th style={th}>Outcome</th>
               <th style={th}>Sentiment</th>
+              <th style={th}>Env</th>
               <th style={{ ...th, width: "3.5rem" }} aria-label="Details" />
             </tr>
           </thead>
@@ -373,7 +396,7 @@ export function RecentTable({ rows }: { rows: RecentCallEntry[] }) {
             {filteredRows.length === 0 ? (
               <tr>
                 <td
-                  colSpan={11}
+                  colSpan={12}
                   style={{
                     padding: "1.5rem 1rem",
                     color: "var(--muted)",
@@ -411,6 +434,9 @@ export function RecentTable({ rows }: { rows: RecentCallEntry[] }) {
                         <td style={td}>
                           <div>{r.sentiment}</div>
                         </td>
+                        <td style={{ ...td, color: "var(--muted)", fontSize: "0.8rem" }}>
+                          {environmentCellLabel(r)}
+                        </td>
                       </>
                     ) : (
                       <>
@@ -427,6 +453,9 @@ export function RecentTable({ rows }: { rows: RecentCallEntry[] }) {
                         <td style={td}>{formatAgreedRateCell(r)}</td>
                         <td style={td}>{formatBookingDecision(r.booking_decision)}</td>
                         <td style={td}>{sentimentCell(r)}</td>
+                        <td style={{ ...td, color: "var(--muted)", fontSize: "0.8rem" }}>
+                          {environmentCellLabel(r)}
+                        </td>
                       </>
                     )}
                     <td style={{ ...td, textAlign: "right", whiteSpace: "nowrap" }}>
@@ -442,7 +471,7 @@ export function RecentTable({ rows }: { rows: RecentCallEntry[] }) {
                   </tr>
                   {expanded && (
                     <tr style={{ borderTop: "none", background: "var(--surface2)" }}>
-                      <td colSpan={11} style={{ padding: "0.85rem 1rem 1rem", verticalAlign: "top" }}>
+                      <td colSpan={12} style={{ padding: "0.85rem 1rem 1rem", verticalAlign: "top" }}>
                         {row.load ? (
                           <>
                             <div style={sectionTitle}>Load</div>
@@ -720,6 +749,7 @@ function eventDetailRows(r: CallEventRecord): { label: string; value: string }[]
     push("Notes", r.notes);
     push("Occurred at", r.occurred_at);
     push("Received at", r.received_at);
+    out.push({ label: "Environment", value: environmentDetailLabel(r) });
     return out;
   }
 
@@ -741,6 +771,7 @@ function eventDetailRows(r: CallEventRecord): { label: string; value: string }[]
   push("How load was found", r.how_load_was_found);
   push("Occurred at", r.occurred_at);
   push("Received at", r.received_at);
+  out.push({ label: "Environment", value: environmentDetailLabel(r) });
   return out;
 }
 

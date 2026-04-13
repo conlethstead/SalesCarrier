@@ -1,5 +1,10 @@
 import type { CallEventRecord, RecentCallEntry, SupabaseLoadRow } from "./metrics.js";
-import { counterofferCount, isLegacyRecord, sentimentFromWorkflowPayload } from "./metrics.js";
+import {
+  counterofferCount,
+  isLegacyRecord,
+  recordEnvironment,
+  sentimentFromWorkflowPayload,
+} from "./metrics.js";
 
 /** RFC 4180-style field escaping for one cell. */
 export function escapeCsvCell(value: string): string {
@@ -78,6 +83,7 @@ const HUMAN_HEADER = [
   "carrier_name",
   "mc_number",
   "reference_number",
+  "environment",
   "call_id_legacy",
   "load_id_legacy",
   "lane",
@@ -111,6 +117,7 @@ export function recentCallEntriesToCsv(entries: RecentCallEntry[]): string {
       isLegacyRecord(r) ? "" : (r.carrier_name?.trim() ?? ""),
       isLegacyRecord(r) ? "" : String(r.mc_number ?? "").trim(),
       isLegacyRecord(r) ? "" : (r.reference_number?.trim() ?? ""),
+      recordEnvironment(r),
       isLegacyRecord(r) ? r.call_id : "",
       isLegacyRecord(r) ? (r.load_id?.trim() ?? "") : "",
       laneText(row),

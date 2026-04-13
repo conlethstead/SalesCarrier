@@ -6,6 +6,11 @@ import cors from "cors";
 import express from "express";
 import { fileURLToPath } from "node:url";
 import type { CallEventPayload, SupabaseLoadRow } from "../shared/metrics.js";
+import {
+  eventMatchesEnvironmentFilter,
+  parseMetricsEnvironment,
+  parseMetricsEnvironmentFilterParam,
+} from "../shared/metrics.js";
 import { recentCallEntriesToCsv } from "../shared/callExportCsv.js";
 import { appendEvent, computeSummary, loadEvents } from "./store.js";
 import { getPgPoolForLoads, pgSearchLoads } from "./pg-loads.js";
@@ -274,6 +279,19 @@ function validatePayload(body: unknown): { ok: true; data: CallEventPayload } | 
     if (parsedLoad.rows.length > 0) payload.load = parsedLoad.rows;
   }
 
+  const envBodyRaw = str(b.environment).trim();
+  const envFromBody = envBodyRaw ? parseMetricsEnvironment(envBodyRaw) : null;
+  if (envBodyRaw && !envFromBody) {
+    return {
+      ok: false,
+      error:
+        'environment must be production, staging, or development (aliases: prod, stg, dev)',
+    };
+  }
+  const envDefault =
+    parseMetricsEnvironment(str(process.env.METRICS_ENVIRONMENT ?? "")) ?? "development";
+  payload.environment = envFromBody ?? envDefault;
+
   return { ok: true, data: payload };
 }
 
@@ -304,14 +322,36 @@ export function createApp() {
     }
   });
 
-  app.get("/api/summary", requireApiKey, (_req, res) => {
-    const computed = computeSummary(75);
+  app.get("/api/summary", requireApiKey, (req, res) => {
+    const envFilter = parseMetricsEnvironmentFilterParam(req.query.environment);
+    if (envFilter == null) {
+      res.status(400).json({
+        error: "Invalid environment filter",
+        detail:
+          'Use environment=all, production, staging, or development (prod/stg/dev accepted).',
+      });
+      return;
+    }
+    const computed = computeSummary(75, envFilter);
     const recent = buildRecentCallEntries(computed.recent);
     res.json({ ...computed, recent });
   });
 
-  app.get("/api/export/calls.csv", requireApiKey, (_req, res) => {
-    const events = loadEvents().sort(
+  app.get("/api/export/calls.csv", requireApiKey, (req, res) => {
+    const envFilter = parseMetricsEnvironmentFilterParam(req.query.environment);
+    if (envFilter == null) {
+      res.status(400).json({
+        error: "Invalid environment filter",
+        detail:
+          'Use environment=all, production, staging, or development (prod/stg/dev accepted).',
+      });
+      return;
+    }
+    let events = loadEvents();
+    if (envFilter !== "all") {
+      events = events.filter((e) => eventMatchesEnvironmentFilter(e, envFilter));
+    }
+    events.sort(
       (a, b) => new Date(b.received_at).getTime() - new Date(a.received_at).getTime()
     );
     const entries = buildRecentCallEntries(events);
