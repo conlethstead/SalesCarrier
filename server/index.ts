@@ -316,9 +316,10 @@ export function createApp() {
    * Protected load search for HappyRobot / AI workflows (e.g. Cloud Run).
    * API key must match API_KEY (X-API-Key, Authorization Bearer/ApiKey, or api_key query).
    *
-   * Query modes (exactly one):
-   * 1) reference_number — matches load_id (optional alias: load_id).
-   * 2) equipment + lane — equipment_type substring + lane (origin/destination); see parseLaneFragments.
+   * Query parameters (same shape as the workflow “Fetch load details” step):
+   * - reference_number — if non-empty, search by load_id only; lane and equipment are ignored.
+   * - Otherwise both lane and equipment are required (equipment_type substring + lane; see parseLaneFragments).
+   * Optional aliases: load_id for reference_number, equipment_type for equipment.
    */
   app.get("/api/loads", requireApiKey, async (req, res) => {
     const supabase = getSupabaseForLoads();
@@ -331,11 +332,11 @@ export function createApp() {
     }
 
     const referenceNumberRaw = str(req.query.reference_number).trim() || str(req.query.load_id).trim();
-    const referenceNumber = referenceNumberRaw.toUpperCase();
     const equipmentRaw = str(req.query.equipment).trim() || str(req.query.equipment_type).trim();
     const laneRaw = str(req.query.lane).trim();
 
-    if (referenceNumber) {
+    if (referenceNumberRaw !== "") {
+      const referenceNumber = referenceNumberRaw.toUpperCase();
       if (!LOAD_ID_PATTERN.test(referenceNumber)) {
         res.status(400).json({
           error: "Invalid reference_number",
@@ -358,12 +359,20 @@ export function createApp() {
       return;
     }
 
-    const equipment = sanitizeLikeFragment(equipmentRaw);
-    if (!equipment || !laneRaw) {
+    if (laneRaw === "" || equipmentRaw === "") {
       res.status(400).json({
         error: "Invalid query",
         detail:
-          "Provide either reference_number (load id) or both equipment and lane query parameters.",
+          "Without reference_number, both lane and equipment are required (e.g. lane=Chicago, IL...Madison, WI&equipment=Dry Van).",
+      });
+      return;
+    }
+
+    const equipment = sanitizeLikeFragment(equipmentRaw);
+    if (!equipment) {
+      res.status(400).json({
+        error: "Invalid query",
+        detail: "equipment is empty or invalid after sanitization.",
       });
       return;
     }
