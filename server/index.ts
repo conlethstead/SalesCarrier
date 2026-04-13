@@ -148,14 +148,36 @@ function parseLoadArray(v: unknown): { ok: true; rows: SupabaseLoadRow[] } | { o
   return { ok: true, rows };
 }
 
+function apiKeyFromRequest(req: express.Request): string | undefined {
+  const fromHeader = req.header("x-api-key");
+  if (fromHeader) return fromHeader;
+
+  const auth = req.header("authorization")?.trim();
+  if (auth) {
+    const bearer = /^Bearer\s+(\S+)/i.exec(auth);
+    if (bearer) return bearer[1];
+    const apiKeyScheme = /^ApiKey\s+(\S+)/i.exec(auth);
+    if (apiKeyScheme) return apiKeyScheme[1];
+  }
+
+  const raw = req.query.api_key;
+  if (typeof raw === "string" && raw !== "") return raw;
+  if (Array.isArray(raw) && typeof raw[0] === "string" && raw[0] !== "") return raw[0];
+  return undefined;
+}
+
 function requireApiKey(
   req: express.Request,
   res: express.Response,
   next: express.NextFunction
 ) {
-  const key = req.header("x-api-key");
+  const key = apiKeyFromRequest(req);
   if (!key || !timingSafeEqual(key, API_KEY)) {
-    res.status(401).json({ error: "Unauthorized", detail: "Invalid or missing X-API-Key" });
+    res.status(401).json({
+      error: "Unauthorized",
+      detail:
+        "Invalid or missing API key (X-API-Key header, Authorization: Bearer or ApiKey, or api_key query)",
+    });
     return;
   }
   next();
@@ -292,7 +314,7 @@ export function createApp() {
 
   /**
    * Protected load search for HappyRobot / AI workflows (e.g. Cloud Run).
-   * Header X-API-Key must match API_KEY.
+   * API key must match API_KEY (X-API-Key, Authorization Bearer/ApiKey, or api_key query).
    *
    * Query modes (exactly one):
    * 1) reference_number — matches load_id (optional alias: load_id).
