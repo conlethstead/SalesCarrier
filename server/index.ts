@@ -10,6 +10,7 @@ import { appendEvent, computeSummary } from "./store.js";
 import {
   getSupabaseForLoads,
   laneMatchesRow,
+  pairLaneSearchPatterns,
   parseLaneFragments,
   sanitizeLikeFragment,
 } from "./supabase-loads.js";
@@ -248,20 +249,32 @@ export function createApp() {
     const lane = parseLaneFragments(laneRaw);
 
     if (lane.kind === "pair") {
-      const { data, error } = await supabase
-        .from("loads")
-        .select("*")
-        .ilike("equipment_type", `%${equipment}%`)
-        .ilike("origin", `%${lane.origin}%`)
-        .ilike("destination", `%${lane.dest}%`)
-        .order("pickup_datetime", { ascending: true });
+      const patterns = pairLaneSearchPatterns(lane.origin, lane.dest);
+      let lastError: string | null = null;
+      for (const { origin: o, dest: d } of patterns) {
+        const { data, error } = await supabase
+          .from("loads")
+          .select("*")
+          .ilike("equipment_type", `%${equipment}%`)
+          .ilike("origin", `%${o}%`)
+          .ilike("destination", `%${d}%`)
+          .order("pickup_datetime", { ascending: true });
 
-      if (error) {
-        console.error("Supabase loads query:", error.message);
-        res.status(500).json({ error: "Failed to query loads", detail: error.message });
+        if (error) {
+          lastError = error.message;
+          console.error("Supabase loads query:", error.message);
+          break;
+        }
+        if ((data?.length ?? 0) > 0) {
+          res.json({ loads: data ?? [] });
+          return;
+        }
+      }
+      if (lastError) {
+        res.status(500).json({ error: "Failed to query loads", detail: lastError });
         return;
       }
-      res.json({ loads: data ?? [] });
+      res.json({ loads: [] });
       return;
     }
 
