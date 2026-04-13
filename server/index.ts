@@ -189,13 +189,9 @@ function validatePayload(body: unknown): { ok: true; data: CallEventPayload } | 
   if (!body || typeof body !== "object") return { ok: false, error: "Body must be a JSON object" };
   const b = body as Record<string, unknown>;
   const ref = str(b.reference_number).trim();
-  if (!ref) {
-    return { ok: false, error: "reference_number is required (string)" };
-  }
 
-  const payload: CallEventPayload = {
-    reference_number: ref,
-  };
+  const payload: CallEventPayload = {};
+  if (ref) payload.reference_number = ref;
 
   if (b.mc_number != null && str(b.mc_number) !== "") {
     payload.mc_number = str(b.mc_number).trim();

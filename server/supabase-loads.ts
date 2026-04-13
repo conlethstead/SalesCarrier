@@ -244,8 +244,13 @@ export function laneMatchesRow(
 }
 
 function loadIdForEvent(e: CallEventRecord): string | null {
-  const raw = isLegacyRecord(e) ? e.load_id?.trim() || "" : e.reference_number.trim();
-  return normalizeLoadId(raw);
+  if (isLegacyRecord(e)) {
+    return normalizeLoadId(e.load_id?.trim() || "");
+  }
+  const ref = e.reference_number?.trim() ?? "";
+  if (ref) return normalizeLoadId(ref);
+  if (e.load?.length === 1) return normalizeLoadId(String(e.load[0].load_id));
+  return null;
 }
 
 function normalizeLoadId(id: string): string | null {

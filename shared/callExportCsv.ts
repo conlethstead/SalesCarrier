@@ -110,7 +110,7 @@ export function recentCallEntriesToCsv(entries: RecentCallEntry[]): string {
       isLegacyRecord(r) ? "legacy" : "workflow",
       isLegacyRecord(r) ? "" : (r.carrier_name?.trim() ?? ""),
       isLegacyRecord(r) ? "" : String(r.mc_number ?? "").trim(),
-      isLegacyRecord(r) ? "" : r.reference_number.trim(),
+      isLegacyRecord(r) ? "" : (r.reference_number?.trim() ?? ""),
       isLegacyRecord(r) ? r.call_id : "",
       isLegacyRecord(r) ? (r.load_id?.trim() ?? "") : "",
       laneText(row),

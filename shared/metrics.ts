@@ -16,9 +16,9 @@ export interface SupabaseLoadRow {
   created_at: string;
 }
 
-/** Ingest body for POST /api/events — only reference_number is required. */
+/** Ingest body for POST /api/events. */
 export interface CallEventPayload {
-  reference_number: string;
+  reference_number?: string;
   mc_number?: string | number;
   /** "yes" = agreed to book, "no" = did not */
   booking_decision?: "yes" | "no";

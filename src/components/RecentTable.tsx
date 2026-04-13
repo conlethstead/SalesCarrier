@@ -134,7 +134,7 @@ function filterLoadRefText(row: RecentCallEntry): string {
   if (isLegacyRecord(r)) {
     return (r.load_id?.trim() || r.call_id || "").trim();
   }
-  return r.reference_number.trim();
+  return r.reference_number?.trim() ?? "";
 }
 
 function filterLaneText(row: RecentCallEntry): string {
@@ -384,9 +384,9 @@ export function RecentTable({ rows }: { rows: RecentCallEntry[] }) {
                 </td>
               </tr>
             ) : (
-              filteredRows.map((row) => {
+              filteredRows.map((row, rowIndex) => {
               const r = row.event;
-              const key = rowKey(row);
+              const key = rowKey(row, rowIndex);
               const expanded = !!open[key];
               const load = row.load;
               const mismatchMessage = loadMismatchMessage(row);
@@ -416,7 +416,7 @@ export function RecentTable({ rows }: { rows: RecentCallEntry[] }) {
                       <>
                         <td style={td}>{r.carrier_name?.trim() ? r.carrier_name : "—"}</td>
                         <td style={{ ...td, fontFamily: "var(--mono)", fontSize: "0.8rem" }}>
-                          <div>{r.reference_number}</div>
+                          <div>{r.reference_number?.trim() || "—"}</div>
                           {mismatchMessage && <div style={rowError}>{mismatchMessage}</div>}
                         </td>
                         <td style={td} title={load ? laneFull(load) : undefined}>
@@ -759,7 +759,9 @@ function sentimentCell(r: CallEventRecord): JSX.Element {
 }
 
 function normalizedLoadRef(r: CallEventRecord): string | null {
-  const raw = isLegacyRecord(r) ? r.load_id?.trim() || "" : r.reference_number.trim();
+  const raw = isLegacyRecord(r)
+    ? r.load_id?.trim() || ""
+    : r.reference_number?.trim() ?? "";
   const id = raw.toUpperCase();
   return LOAD_REF_PATTERN.test(id) ? id : null;
 }
@@ -771,10 +773,12 @@ function loadMismatchMessage(row: RecentCallEntry): string | null {
   return `No load in payload matches reference ${id}.`;
 }
 
-function rowKey(row: RecentCallEntry): string {
+function rowKey(row: RecentCallEntry, index: number): string {
   const r = row.event;
   if (isLegacyRecord(r)) return `legacy-${r.call_id}-${r.received_at}`;
-  return `new-${r.reference_number}-${r.received_at}`;
+  const ref = r.reference_number?.trim();
+  if (ref) return `new-${ref}-${r.received_at}`;
+  return `new-i${index}-${r.received_at}`;
 }
 
 const modalBackdrop: CSSProperties = {
