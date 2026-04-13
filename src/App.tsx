@@ -36,7 +36,7 @@ export default function App() {
       <header style={header}>
         <div>
           <h1 style={{ fontSize: "1.35rem" }}>Inbound carrier sales</h1>
-          <p style={subtitle}>Assistant outcomes, sentiment, and offer signals</p>
+          <p style={subtitle}>Assistant outcomes, sentiment, and statistics</p>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
           <button type="button" onClick={() => void load()} style={btn}>
@@ -81,7 +81,7 @@ export default function App() {
 }
 
 const layout: CSSProperties = {
-  maxWidth: "1120px",
+  maxWidth: "1400px",
   margin: "0 auto",
   padding: "1.75rem 1.25rem 3rem",
 };

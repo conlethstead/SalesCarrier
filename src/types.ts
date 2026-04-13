@@ -4,5 +4,7 @@ export type {
   CallOutcome,
   CarrierSentiment,
   MetricsSummary,
+  RecentCallEntry,
+  SupabaseLoadRow,
 } from "../shared/metrics";
 export { isLegacyRecord } from "../shared/metrics";

@@ -2,12 +2,19 @@ import {
   Bar,
   BarChart,
   CartesianGrid,
+  Cell,
   ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
 } from "recharts";
 import type { MetricsSummary } from "../types";
+
+const SENTIMENT_BAR_COLORS: Record<string, string> = {
+  Positive: "var(--booked-accent)",
+  Neutral: "var(--negotiated-accent)",
+  Negative: "var(--declined-accent)",
+};
 
 export function SentimentChart({ summary }: { summary: MetricsSummary }) {
   const data = [
@@ -31,7 +38,7 @@ export function SentimentChart({ summary }: { summary: MetricsSummary }) {
         style={{
           fontSize: "0.95rem",
           marginBottom: "0.75rem",
-          color: "var(--muted)",
+          color: "var(--text)",
           fontWeight: 600,
         }}
       >
@@ -51,9 +58,16 @@ export function SentimentChart({ summary }: { summary: MetricsSummary }) {
                   background: "var(--surface2)",
                   border: "1px solid var(--border)",
                   borderRadius: "8px",
+                  color: "var(--text)",
                 }}
+                labelStyle={{ color: "var(--text)" }}
+                itemStyle={{ color: "var(--text)" }}
               />
-              <Bar dataKey="value" fill="var(--accent)" radius={[6, 6, 0, 0]} maxBarSize={48} />
+              <Bar dataKey="value" radius={[6, 6, 0, 0]} maxBarSize={48}>
+                {data.map((d) => (
+                  <Cell key={d.name} fill={SENTIMENT_BAR_COLORS[d.name] ?? "var(--text)"} />
+                ))}
+              </Bar>
             </BarChart>
           </ResponsiveContainer>
         </div>

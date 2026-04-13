@@ -5,11 +5,13 @@ import path from "node:path";
 import cors from "cors";
 import express from "express";
 import { fileURLToPath } from "node:url";
-import type { CallEventPayload } from "../shared/metrics.js";
+import type { CallEventPayload, SupabaseLoadRow } from "../shared/metrics.js";
 import { appendEvent, computeSummary } from "./store.js";
 import {
+  buildRecentCallEntries,
   getSupabaseForLoads,
   laneMatchesRow,
+  LOAD_ID_PATTERN,
   pairLaneSearchPatterns,
   parseLaneFragments,
   sanitizeLikeFragment,
@@ -67,6 +69,83 @@ function parseVerified(v: unknown): { ok: true; value?: boolean } | { ok: false;
   if (["true", "yes", "1", "y"].includes(s)) return { ok: true, value: true };
   if (["false", "no", "0", "n"].includes(s)) return { ok: true, value: false };
   return { ok: false, error: 'verified must be true/false, yes/no, 1/0, or a boolean string' };
+}
+
+function parseOptionalNumber(v: unknown, label: string): { ok: true; n: number | null } | { ok: false; error: string } {
+  if (v == null || str(v) === "") return { ok: true, n: null };
+  const p = parseNonNegNumber(v, label);
+  if (!p.ok) return p;
+  return { ok: true, n: p.n };
+}
+
+function parseOptionalInt(v: unknown, label: string): { ok: true; n: number | null } | { ok: false; error: string } {
+  if (v == null || str(v) === "") return { ok: true, n: null };
+  const p = parseNonNegInt(v, label);
+  if (!p.ok) return p;
+  return { ok: true, n: p.n };
+}
+
+function parseLoadRow(v: unknown, index: number): { ok: true; row: SupabaseLoadRow } | { ok: false; error: string } {
+  if (!v || typeof v !== "object") return { ok: false, error: `load[${index}] must be an object` };
+  const r = v as Record<string, unknown>;
+
+  const load_id = str(r.load_id).trim().toUpperCase();
+  const origin = str(r.origin).trim();
+  const destination = str(r.destination).trim();
+  const pickup_datetime = str(r.pickup_datetime).trim();
+  const delivery_datetime = str(r.delivery_datetime).trim();
+  const equipment_type = str(r.equipment_type).trim();
+  const commodity_type = str(r.commodity_type).trim();
+  const created_at = str(r.created_at).trim() || new Date().toISOString();
+
+  if (!load_id) return { ok: false, error: `load[${index}].load_id is required` };
+  if (!origin) return { ok: false, error: `load[${index}].origin is required` };
+  if (!destination) return { ok: false, error: `load[${index}].destination is required` };
+  if (!pickup_datetime) return { ok: false, error: `load[${index}].pickup_datetime is required` };
+  if (!delivery_datetime) return { ok: false, error: `load[${index}].delivery_datetime is required` };
+  if (!equipment_type) return { ok: false, error: `load[${index}].equipment_type is required` };
+  if (!commodity_type) return { ok: false, error: `load[${index}].commodity_type is required` };
+
+  const rate = parseNonNegNumber(r.loadboard_rate, `load[${index}].loadboard_rate`);
+  if (!rate.ok) return rate;
+  const miles = parseOptionalNumber(r.miles, `load[${index}].miles`);
+  if (!miles.ok) return miles;
+  const weight = parseOptionalNumber(r.weight, `load[${index}].weight`);
+  if (!weight.ok) return weight;
+  const numOfPieces = parseOptionalInt(r.num_of_pieces, `load[${index}].num_of_pieces`);
+  if (!numOfPieces.ok) return numOfPieces;
+
+  return {
+    ok: true,
+    row: {
+      load_id,
+      origin: origin.slice(0, 500),
+      destination: destination.slice(0, 500),
+      pickup_datetime,
+      delivery_datetime,
+      equipment_type: equipment_type.slice(0, 200),
+      loadboard_rate: rate.n,
+      notes: str(r.notes).trim().slice(0, 4000) || null,
+      weight: weight.n,
+      commodity_type: commodity_type.slice(0, 300),
+      num_of_pieces: numOfPieces.n,
+      miles: miles.n,
+      dimensions: str(r.dimensions).trim().slice(0, 200) || null,
+      created_at,
+    },
+  };
+}
+
+function parseLoadArray(v: unknown): { ok: true; rows: SupabaseLoadRow[] } | { ok: false; error: string } {
+  if (v == null) return { ok: true, rows: [] };
+  if (!Array.isArray(v)) return { ok: false, error: "load must be an array when provided" };
+  const rows: SupabaseLoadRow[] = [];
+  for (let i = 0; i < v.length; i++) {
+    const parsed = parseLoadRow(v[i], i);
+    if (!parsed.ok) return parsed;
+    rows.push(parsed.row);
+  }
+  return { ok: true, rows };
 }
 
 function requireApiKey(
@@ -134,11 +213,13 @@ function validatePayload(body: unknown): { ok: true; data: CallEventPayload } | 
   if (b.carrier_name != null && str(b.carrier_name) !== "") {
     payload.carrier_name = str(b.carrier_name).trim().slice(0, 500);
   }
-  if (b.sentiment_classification != null && str(b.sentiment_classification) !== "") {
-    payload.sentiment_classification = str(b.sentiment_classification).trim().slice(0, 500);
+  const sentimentClassRaw = b.sentiment_classification ?? b.sentimentClassification;
+  if (sentimentClassRaw != null && str(sentimentClassRaw) !== "") {
+    payload.sentiment_classification = str(sentimentClassRaw).trim().slice(0, 500);
   }
-  if (b.sentiment_reasoning != null && str(b.sentiment_reasoning) !== "") {
-    payload.sentiment_reasoning = str(b.sentiment_reasoning).slice(0, 4000);
+  const sentimentReasonRaw = b.sentiment_reasoning ?? b.sentimentReasoning;
+  if (sentimentReasonRaw != null && str(sentimentReasonRaw) !== "") {
+    payload.sentiment_reasoning = str(sentimentReasonRaw).slice(0, 4000);
   }
   if (b.trailer != null && str(b.trailer) !== "") {
     payload.trailer = str(b.trailer).trim().slice(0, 200);
@@ -151,6 +232,26 @@ function validatePayload(body: unknown): { ok: true; data: CallEventPayload } | 
   }
   if (b.how_load_was_found != null && str(b.how_load_was_found) !== "") {
     payload.how_load_was_found = str(b.how_load_was_found).trim().slice(0, 2000);
+  }
+  if (b.agreed_rate != null) {
+    payload.agreed_rate = str(b.agreed_rate).trim().slice(0, 200);
+  }
+  if (b.abandoned != null && str(b.abandoned) !== "") {
+    payload.abandoned = str(b.abandoned).trim().slice(0, 50);
+  }
+  if (b.failed_verification != null && str(b.failed_verification) !== "") {
+    payload.failed_verification = str(b.failed_verification).trim().slice(0, 50);
+  }
+  if (b.loading_error != null && str(b.loading_error) !== "") {
+    payload.loading_error = str(b.loading_error).trim().slice(0, 500);
+  }
+  if (b.step_of_emotion != null && str(b.step_of_emotion) !== "") {
+    payload.step_of_emotion = str(b.step_of_emotion).trim().slice(0, 500);
+  }
+  if (b.load != null) {
+    const parsedLoad = parseLoadArray(b.load);
+    if (!parsedLoad.ok) return parsedLoad;
+    if (parsedLoad.rows.length > 0) payload.load = parsedLoad.rows;
   }
 
   return { ok: true, data: payload };
@@ -184,11 +285,10 @@ export function createApp() {
   });
 
   app.get("/api/summary", requireApiKey, (_req, res) => {
-    res.json(computeSummary(75));
+    const computed = computeSummary(75);
+    const recent = buildRecentCallEntries(computed.recent);
+    res.json({ ...computed, recent });
   });
-
-  /** load_id / reference_number: three uppercase letters + five digits (e.g. FDX10234). */
-  const loadIdPattern = /^[A-Z]{3}\d{5}$/;
 
   /**
    * Protected load search for HappyRobot / AI workflows (e.g. Cloud Run).
@@ -214,7 +314,7 @@ export function createApp() {
     const laneRaw = str(req.query.lane).trim();
 
     if (referenceNumber) {
-      if (!loadIdPattern.test(referenceNumber)) {
+      if (!LOAD_ID_PATTERN.test(referenceNumber)) {
         res.status(400).json({
           error: "Invalid reference_number",
           detail: "Must be three uppercase letters followed by five digits (e.g. FDX10234).",

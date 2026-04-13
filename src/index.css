@@ -1,12 +1,28 @@
 :root {
   --bg: #0c0f14;
-  --surface: #141a24;
-  --surface2: #1a2230;
-  --border: #2a3548;
-  --text: #e8edf5;
-  --muted: #8b98ad;
+  /** Default panels / cards (info-style grey) */
+  --surface: #2b2b2b;
+  --surface2: #323232;
+  --border: #404040;
+  --text: #f5f5f5;
+  --muted: rgba(255, 255, 255, 0.62);
   --accent: #3d8bfd;
   --accent-dim: #2563c9;
+  /** Happy Robot–style “booked” green */
+  --booked-surface: #0b2a1a;
+  --booked-accent: #14854f;
+  --booked-foreground: #a1f0b0;
+  --booked-label: rgba(161, 240, 176, 0.72);
+  /** Navy / blue for “negotiated, no deal” */
+  --negotiated-surface: #111b3b;
+  --negotiated-accent: #2547a5;
+  --negotiated-foreground: #ffffff;
+  --negotiated-label: rgba(255, 255, 255, 0.72);
+  /** Amber / yellow for “declined” */
+  --declined-surface: #422f06;
+  --declined-accent: #f9d71c;
+  --declined-foreground: #f9d71c;
+  --declined-label: rgba(249, 215, 28, 0.72);
   --success: #34d399;
   --warn: #fbbf24;
   --danger: #f87171;
@@ -16,6 +32,11 @@
 
 * {
   box-sizing: border-box;
+}
+
+/** Recent calls filter modal: allow grid columns to shrink so datetime inputs don’t force horizontal scroll */
+.recent-filters-modal-grid > * {
+  min-width: 0;
 }
 
 html,

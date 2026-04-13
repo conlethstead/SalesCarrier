@@ -7,9 +7,25 @@ import {
   ResponsiveContainer,
   Tooltip,
 } from "recharts";
-import type { MetricsSummary } from "../types";
+import type { CallOutcome, MetricsSummary } from "../types";
 
-const COLORS = ["#34d399", "#60a5fa", "#fbbf24", "#f87171", "#a78bfa", "#94a3b8"];
+const OUTCOME_ORDER: CallOutcome[] = [
+  "booked",
+  "declined",
+  "negotiated_no_deal",
+  "no_match",
+  "failed_verification",
+  "abandoned",
+];
+
+const OUTCOME_COLORS: Record<CallOutcome, string> = {
+  booked: "var(--booked-accent)",
+  declined: "var(--declined-accent)",
+  negotiated_no_deal: "var(--negotiated-accent)",
+  no_match: "#a0a0a0",
+  failed_verification: "#fdba74",
+  abandoned: "#c4b5fd",
+};
 
 const LABELS: Record<string, string> = {
   booked: "Booked",
@@ -21,9 +37,11 @@ const LABELS: Record<string, string> = {
 };
 
 export function OutcomeChart({ summary }: { summary: MetricsSummary }) {
-  const data = Object.entries(summary.by_outcome)
-    .filter(([, v]) => v > 0)
-    .map(([name, value]) => ({ name: LABELS[name] ?? name, value }));
+  const data = OUTCOME_ORDER.filter((key) => (summary.by_outcome[key] ?? 0) > 0).map((key) => ({
+    name: LABELS[key] ?? key,
+    value: summary.by_outcome[key],
+    color: OUTCOME_COLORS[key],
+  }));
 
   if (data.length === 0) {
     return (
@@ -50,8 +68,8 @@ export function OutcomeChart({ summary }: { summary: MetricsSummary }) {
               outerRadius={88}
               paddingAngle={2}
             >
-              {data.map((_, i) => (
-                <Cell key={i} fill={COLORS[i % COLORS.length]} stroke="transparent" />
+              {data.map((d, i) => (
+                <Cell key={i} fill={d.color} stroke="transparent" />
               ))}
             </Pie>
             <Tooltip
@@ -59,9 +77,12 @@ export function OutcomeChart({ summary }: { summary: MetricsSummary }) {
                 background: "var(--surface2)",
                 border: "1px solid var(--border)",
                 borderRadius: "8px",
+                color: "var(--text)",
               }}
+              labelStyle={{ color: "var(--text)" }}
+              itemStyle={{ color: "var(--text)" }}
             />
-            <Legend />
+            <Legend wrapperStyle={{ color: "var(--muted)", fontSize: "12px" }} />
           </PieChart>
         </ResponsiveContainer>
       </div>
@@ -79,6 +100,6 @@ const panel: CSSProperties = {
 const h2: CSSProperties = {
   fontSize: "0.95rem",
   marginBottom: "0.75rem",
-  color: "var(--muted)",
+  color: "var(--text)",
   fontWeight: 600,
 };

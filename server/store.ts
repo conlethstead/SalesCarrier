@@ -5,9 +5,16 @@ import type {
   CallEventRecord,
   CallOutcome,
   CarrierSentiment,
-  MetricsSummary,
+  MetricsSummaryComputed,
 } from "../shared/metrics.js";
-import { counterofferCount, isLegacyRecord } from "../shared/metrics.js";
+import {
+  counterofferCount,
+  isAffirmativeWorkflowField,
+  isLegacyRecord,
+  isWorkflowPlaceholder,
+  parseCurrencyNumber,
+  sentimentFromWorkflowPayload,
+} from "../shared/metrics.js";
 
 const OUTCOMES: CallOutcome[] = [
   "booked",
@@ -60,7 +67,7 @@ export function appendEvent(payload: CallEventPayload): CallEventRecord {
   return record;
 }
 
-export function computeSummary(limitRecent = 50): MetricsSummary {
+export function computeSummary(limitRecent = 50): MetricsSummaryComputed {
   const events = loadEvents();
   const by_outcome = Object.fromEntries(
     OUTCOMES.map((o) => [o, 0])
@@ -75,9 +82,12 @@ export function computeSummary(limitRecent = 50): MetricsSummary {
       if (by_sentiment[e.sentiment] !== undefined) by_sentiment[e.sentiment]++;
     } else {
       if (e.booking_decision === "yes") by_outcome.booked++;
-      else if (e.booking_decision === "no") by_outcome.declined++;
-      else by_outcome.abandoned++;
-      by_sentiment.neutral++;
+      else if (e.booking_decision === "no") {
+        const n = counterofferCount(e);
+        if (n != null && n > 0) by_outcome.negotiated_no_deal++;
+        else by_outcome.declined++;
+      } else by_outcome.abandoned++;
+      by_sentiment[sentimentFromWorkflowPayload(e)]++;
     }
   }
 
@@ -85,25 +95,66 @@ export function computeSummary(limitRecent = 50): MetricsSummary {
   const total_calls = events.length;
   const booking_rate = total_calls ? booked_count / total_calls : 0;
 
-  const rounds: number[] = [];
+  let counterofferSum = 0;
   for (const e of events) {
     if (isLegacyRecord(e)) {
-      if (e.negotiation_rounds != null && e.negotiation_rounds > 0) rounds.push(e.negotiation_rounds);
+      const n = e.negotiation_rounds;
+      counterofferSum += n != null && Number.isFinite(n) ? n : 0;
     } else {
-      const n = counterofferCount(e);
-      if (n != null && n > 0) rounds.push(n);
+      counterofferSum += counterofferCount(e) ?? 0;
     }
   }
-  const avg_negotiation_rounds_when_negotiated =
-    rounds.length === 0 ? null : rounds.reduce((a, b) => a + b, 0) / rounds.length;
+  const avg_counteroffers_per_call =
+    events.length === 0 ? null : counterofferSum / events.length;
 
-  const bookedWithRate = events.filter(isLegacyRecord).filter(
-    (e) => e.outcome === "booked" && e.agreed_rate != null
-  );
-  const avg_agreed_rate_when_booked =
-    bookedWithRate.length === 0
-      ? null
-      : bookedWithRate.reduce((s, e) => s + (e.agreed_rate ?? 0), 0) / bookedWithRate.length;
+  const rateDiffs: number[] = [];
+  let failed_verification_yes_count = 0;
+  let loading_error_yes_count = 0;
+  const stepEmotionCounts = new Map<string, number>();
+
+  for (const e of events) {
+    if (isLegacyRecord(e)) {
+      if (
+        e.outcome === "booked" &&
+        e.listed_rate != null &&
+        e.agreed_rate != null &&
+        Number.isFinite(e.listed_rate) &&
+        Number.isFinite(e.agreed_rate)
+      ) {
+        rateDiffs.push(e.listed_rate - e.agreed_rate);
+      }
+    } else {
+      if (isAffirmativeWorkflowField(e.failed_verification)) failed_verification_yes_count++;
+      if (isAffirmativeWorkflowField(e.loading_error)) loading_error_yes_count++;
+      const step = e.step_of_emotion?.trim();
+      if (step && !isWorkflowPlaceholder(step)) {
+        stepEmotionCounts.set(step, (stepEmotionCounts.get(step) ?? 0) + 1);
+      }
+      if (e.booking_decision === "yes") {
+        const listed = e.load?.[0]?.loadboard_rate ?? parseCurrencyNumber(e.listed_rate ?? null);
+        const agreed = parseCurrencyNumber(e.agreed_rate ?? null);
+        if (listed != null && agreed != null) rateDiffs.push(listed - agreed);
+      }
+    }
+  }
+
+  const avg_listed_minus_agreed_when_booked =
+    rateDiffs.length === 0 ? null : rateDiffs.reduce((a, b) => a + b, 0) / rateDiffs.length;
+
+  let top_step_emotion: string | null = null;
+  let top_step_emotion_count = 0;
+  for (const [k, c] of stepEmotionCounts) {
+    if (
+      c > top_step_emotion_count ||
+      (c === top_step_emotion_count && (top_step_emotion === null || k < top_step_emotion))
+    ) {
+      top_step_emotion = k;
+      top_step_emotion_count = c;
+    }
+  }
+
+  const failed_verification_rate = total_calls ? failed_verification_yes_count / total_calls : 0;
+  const loading_error_rate = total_calls ? loading_error_yes_count / total_calls : 0;
 
   const durations: number[] = [];
   for (const e of events) {
@@ -122,8 +173,14 @@ export function computeSummary(limitRecent = 50): MetricsSummary {
     by_sentiment,
     booked_count,
     booking_rate,
-    avg_agreed_rate_when_booked,
-    avg_negotiation_rounds_when_negotiated,
+    avg_listed_minus_agreed_when_booked,
+    failed_verification_yes_count,
+    failed_verification_rate,
+    loading_error_yes_count,
+    loading_error_rate,
+    top_step_emotion,
+    top_step_emotion_count,
+    avg_counteroffers_per_call,
     avg_call_duration_seconds,
     recent,
   };

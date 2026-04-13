@@ -1,6 +1,11 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import type { CallEventRecord, RecentCallEntry, SupabaseLoadRow } from "../shared/metrics.js";
+import { isLegacyRecord } from "../shared/metrics.js";
 
 let client: SupabaseClient | null | undefined;
+
+/** Same convention as GET /api/loads (e.g. FDX10234). */
+export const LOAD_ID_PATTERN = /^[A-Z]{3}\d{5}$/;
 
 export function getSupabaseForLoads(): SupabaseClient | null {
   const url = process.env.SUPABASE_URL?.trim();
@@ -238,19 +243,32 @@ export function laneMatchesRow(
   return hay.includes(needle);
 }
 
-export type LoadRow = {
-  load_id: string;
-  origin: string;
-  destination: string;
-  pickup_datetime: string;
-  delivery_datetime: string;
-  equipment_type: string;
-  loadboard_rate: number;
-  notes: string | null;
-  weight: number | null;
-  commodity_type: string;
-  num_of_pieces: number | null;
-  miles: number | null;
-  dimensions: string | null;
-  created_at: string;
-};
+function loadIdForEvent(e: CallEventRecord): string | null {
+  const raw = isLegacyRecord(e) ? e.load_id?.trim() || "" : e.reference_number.trim();
+  return normalizeLoadId(raw);
+}
+
+function normalizeLoadId(id: string): string | null {
+  const normalized = id.trim().toUpperCase();
+  return LOAD_ID_PATTERN.test(normalized) ? normalized : null;
+}
+
+function embeddedLoadForEvent(e: CallEventRecord): SupabaseLoadRow | null {
+  if (isLegacyRecord(e)) return null;
+  if (!Array.isArray(e.load) || e.load.length === 0) return null;
+  const eventId = loadIdForEvent(e);
+  if (!eventId) return null;
+  for (const row of e.load) {
+    const id = normalizeLoadId(row.load_id);
+    if (id === eventId) return row;
+  }
+  return null;
+}
+
+/** Map recent events to rows with load data from the workflow payload only (`load[]`). */
+export function buildRecentCallEntries(recent: CallEventRecord[]): RecentCallEntry[] {
+  return recent.map((event) => ({
+    event,
+    load: embeddedLoadForEvent(event),
+  }));
+}
