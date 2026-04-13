@@ -2,7 +2,7 @@
 # Deploy a pushed image to Cloud Run with API_KEY from .env
 # Usage:
 #   ./scripts/deploy-cloud-run.sh [IMAGE_URI]
-# If IMAGE_URI is omitted, uses the most recently printed image from rebuild-and-push (you must paste).
+# Pass the full image URI (e.g. printed at the end of ./scripts/build-via-cloud-build.sh).
 
 set -euo pipefail
 

@@ -1,6 +1,8 @@
-import { Fragment, useEffect, useMemo, useState, type CSSProperties } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
 import type { CallEventRecord, RecentCallEntry, SupabaseLoadRow } from "../types";
 import { isLegacyRecord } from "../types";
+import { fetchAllCallsCsvBlob } from "../api";
+import { recentCallEntriesToCsv } from "../../shared/callExportCsv";
 import { counterofferCount } from "../../shared/metrics";
 
 const LANE_PREVIEW = 48;
@@ -202,15 +204,46 @@ function rowMatchesFilters(row: RecentCallEntry, f: TableFilters): boolean {
   return true;
 }
 
+function triggerBrowserDownload(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.rel = "noopener";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
 export function RecentTable({ rows }: { rows: RecentCallEntry[] }) {
   const [open, setOpen] = useState<Record<string, boolean>>({});
   const [filters, setFilters] = useState<TableFilters>(emptyFilters);
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [exportAllBusy, setExportAllBusy] = useState(false);
 
   const filteredRows = useMemo(
     () => rows.filter((row) => rowMatchesFilters(row, filters)),
     [rows, filters]
   );
+
+  const downloadFilteredCsv = useCallback(() => {
+    const csv = recentCallEntriesToCsv(filteredRows);
+    const blob = new Blob([`\ufeff${csv}`], { type: "text/csv;charset=utf-8" });
+    const stamp = new Date().toISOString().slice(0, 10);
+    triggerBrowserDownload(blob, `carrier-calls-filtered-${stamp}.csv`);
+  }, [filteredRows]);
+
+  const downloadAllCsv = useCallback(async () => {
+    setExportAllBusy(true);
+    try {
+      const blob = await fetchAllCallsCsvBlob();
+      const stamp = new Date().toISOString().slice(0, 10);
+      triggerBrowserDownload(blob, `carrier-calls-all-${stamp}.csv`);
+    } finally {
+      setExportAllBusy(false);
+    }
+  }, []);
 
   const setFilter = <K extends keyof TableFilters>(key: K, value: TableFilters[K]) => {
     setFilters((prev) => ({ ...prev, [key]: value }));
@@ -285,6 +318,24 @@ export function RecentTable({ rows }: { rows: RecentCallEntry[] }) {
             <span style={{ fontSize: "0.8rem", color: "var(--muted)" }}>
               Showing {filteredRows.length} of {rows.length}
             </span>
+            <button
+              type="button"
+              onClick={() => void downloadAllCsv()}
+              disabled={exportAllBusy}
+              style={exportBtn}
+              title="Download every stored call (not limited to the recent window in the table)"
+            >
+              {exportAllBusy ? "Preparing…" : "CSV (all calls)"}
+            </button>
+            <button
+              type="button"
+              onClick={downloadFilteredCsv}
+              disabled={exportAllBusy || filteredRows.length === 0}
+              style={exportBtn}
+              title="Uses the same rows as the table after filters (still only the recent window loaded in the dashboard)"
+            >
+              CSV (filtered)
+            </button>
             <button
               type="button"
               onClick={() => setFiltersOpen(true)}
@@ -791,10 +842,7 @@ const filterGrid: CSSProperties = {
   alignItems: "end",
 };
 
-const filterTriggerBtn: CSSProperties = {
-  display: "inline-flex",
-  alignItems: "center",
-  gap: "0.4rem",
+const exportBtn: CSSProperties = {
   background: "var(--surface2)",
   border: "1px solid var(--border)",
   borderRadius: "8px",
@@ -804,6 +852,13 @@ const filterTriggerBtn: CSSProperties = {
   fontWeight: 500,
   padding: "0.4rem 0.75rem",
   fontFamily: "var(--font)",
+};
+
+const filterTriggerBtn: CSSProperties = {
+  ...exportBtn,
+  display: "inline-flex",
+  alignItems: "center",
+  gap: "0.4rem",
 };
 
 const filterActiveBadge: CSSProperties = {

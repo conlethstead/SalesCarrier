@@ -27,43 +27,133 @@ const OUTCOMES: CallOutcome[] = [
 
 const SENTIMENTS: CarrierSentiment[] = ["positive", "neutral", "negative"];
 
-function dataPath(): string {
-  const dir = process.env.DATA_DIR ?? path.join(process.cwd(), "data");
-  return path.join(dir, "events.json");
+const CSV_HEADER = "received_at,occurred_at,record_json";
+
+function dataDir(): string {
+  return process.env.DATA_DIR ?? path.join(process.cwd(), "data");
+}
+
+function csvPath(): string {
+  return path.join(dataDir(), "events.csv");
+}
+
+function jsonPathLegacy(): string {
+  return path.join(dataDir(), "events.json");
 }
 
 function ensureDir(file: string) {
   fs.mkdirSync(path.dirname(file), { recursive: true });
 }
 
+function escapeCsvField(s: string): string {
+  const t = s.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  if (/[",\n]/.test(t)) {
+    return `"${t.replace(/"/g, '""')}"`;
+  }
+  return t;
+}
+
+function formatStorageRow(e: CallEventRecord): string {
+  const json = JSON.stringify(e);
+  return [e.received_at, e.occurred_at ?? "", json].map(escapeCsvField).join(",");
+}
+
+function parseCsvRow(line: string): string[] {
+  const out: string[] = [];
+  let i = 0;
+  while (i < line.length) {
+    if (line[i] === '"') {
+      i++;
+      let cell = "";
+      while (i < line.length) {
+        if (line[i] === '"' && line[i + 1] === '"') {
+          cell += '"';
+          i += 2;
+        } else if (line[i] === '"') {
+          i++;
+          break;
+        } else {
+          cell += line[i++];
+        }
+      }
+      out.push(cell);
+      if (line[i] === ",") i++;
+    } else {
+      const next = line.indexOf(",", i);
+      if (next === -1) {
+        out.push(line.slice(i));
+        break;
+      }
+      out.push(line.slice(i, next));
+      i = next + 1;
+    }
+  }
+  return out;
+}
+
+function migrateJsonToCsvIfNeeded() {
+  const csvFile = csvPath();
+  const jsonFile = jsonPathLegacy();
+  if (fs.existsSync(csvFile) || !fs.existsSync(jsonFile)) return;
+  try {
+    const raw = fs.readFileSync(jsonFile, "utf-8");
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return;
+    const events = parsed as CallEventRecord[];
+    ensureDir(csvFile);
+    const lines = [CSV_HEADER, ...events.map((e) => formatStorageRow(e))];
+    fs.writeFileSync(csvFile, lines.join("\n") + "\n", "utf-8");
+    const bak = path.join(dataDir(), "events.json.migrated");
+    fs.renameSync(jsonFile, bak);
+    console.info(`Migrated ${events.length} event(s) from events.json to events.csv (${bak}).`);
+  } catch (e) {
+    console.error("events.json migration failed:", e);
+  }
+}
+
 export function loadEvents(): CallEventRecord[] {
-  const file = dataPath();
+  migrateJsonToCsvIfNeeded();
+  const file = csvPath();
   if (!fs.existsSync(file)) return [];
   try {
     const raw = fs.readFileSync(file, "utf-8");
-    const parsed = JSON.parse(raw) as unknown;
-    if (!Array.isArray(parsed)) return [];
-    return parsed as CallEventRecord[];
+    const lines = raw.split(/\n/).map((l) => l.replace(/\r$/, "")).filter((l) => l.length > 0);
+    if (lines.length === 0) return [];
+    const start = lines[0].startsWith("received_at") ? 1 : 0;
+    const out: CallEventRecord[] = [];
+    for (let i = start; i < lines.length; i++) {
+      const cols = parseCsvRow(lines[i]);
+      if (cols.length < 3) continue;
+      try {
+        out.push(JSON.parse(cols[2]) as CallEventRecord);
+      } catch {
+        /* skip malformed line */
+      }
+    }
+    return out;
   } catch {
     return [];
   }
 }
 
-function saveEvents(events: CallEventRecord[]) {
-  const file = dataPath();
+function appendCsvRow(record: CallEventRecord) {
+  const file = csvPath();
   ensureDir(file);
-  fs.writeFileSync(file, JSON.stringify(events, null, 2), "utf-8");
+  const line = `${formatStorageRow(record)}\n`;
+  if (!fs.existsSync(file)) {
+    fs.writeFileSync(file, `${CSV_HEADER}\n${line}`, "utf-8");
+  } else {
+    fs.appendFileSync(file, line, "utf-8");
+  }
 }
 
 export function appendEvent(payload: CallEventPayload): CallEventRecord {
-  const events = loadEvents();
   const record: CallEventRecord = {
     ...payload,
     received_at: new Date().toISOString(),
     occurred_at: payload.occurred_at ?? new Date().toISOString(),
   };
-  events.push(record);
-  saveEvents(events);
+  appendCsvRow(record);
   return record;
 }
 

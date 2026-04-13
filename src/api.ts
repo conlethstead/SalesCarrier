@@ -20,3 +20,13 @@ export async function fetchSummary(): Promise<MetricsSummary> {
   }
   return res.json() as Promise<MetricsSummary>;
 }
+
+/** All stored calls as CSV (UTF-8 with BOM), newest first. Same columns as “Download CSV (filtered)”. */
+export async function fetchAllCallsCsvBlob(): Promise<Blob> {
+  const res = await apiFetch("/api/export/calls.csv");
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error((err as { error?: string }).error ?? res.statusText);
+  }
+  return res.blob();
+}

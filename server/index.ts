@@ -6,7 +6,9 @@ import cors from "cors";
 import express from "express";
 import { fileURLToPath } from "node:url";
 import type { CallEventPayload, SupabaseLoadRow } from "../shared/metrics.js";
-import { appendEvent, computeSummary } from "./store.js";
+import { recentCallEntriesToCsv } from "../shared/callExportCsv.js";
+import { appendEvent, computeSummary, loadEvents } from "./store.js";
+import { getPgPoolForLoads, pgSearchLoads } from "./pg-loads.js";
 import {
   buildRecentCallEntries,
   getSupabaseForLoads,
@@ -312,6 +314,17 @@ export function createApp() {
     res.json({ ...computed, recent });
   });
 
+  app.get("/api/export/calls.csv", requireApiKey, (_req, res) => {
+    const events = loadEvents().sort(
+      (a, b) => new Date(b.received_at).getTime() - new Date(a.received_at).getTime()
+    );
+    const entries = buildRecentCallEntries(events);
+    const csv = recentCallEntriesToCsv(entries);
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", 'attachment; filename="carrier-calls.csv"');
+    res.send(`\ufeff${csv}`);
+  });
+
   /**
    * Protected load search for HappyRobot / AI workflows (e.g. Cloud Run).
    * API key must match API_KEY (X-API-Key, Authorization Bearer/ApiKey, or api_key query).
@@ -322,32 +335,95 @@ export function createApp() {
    * Optional aliases: load_id for reference_number, equipment_type for equipment.
    */
   app.get("/api/loads", requireApiKey, async (req, res) => {
-    const supabase = getSupabaseForLoads();
-    if (!supabase) {
-      res.status(503).json({
-        error: "Load search unavailable",
-        detail: "Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY on the server.",
-      });
-      return;
-    }
-
     const referenceNumberRaw = str(req.query.reference_number).trim() || str(req.query.load_id).trim();
     const equipmentRaw = str(req.query.equipment).trim() || str(req.query.equipment_type).trim();
     const laneRaw = str(req.query.lane).trim();
 
-    if (referenceNumberRaw !== "") {
-      const referenceNumber = referenceNumberRaw.toUpperCase();
-      if (!LOAD_ID_PATTERN.test(referenceNumber)) {
+    const supabase = getSupabaseForLoads();
+    if (supabase) {
+      if (referenceNumberRaw !== "") {
+        const referenceNumber = referenceNumberRaw.toUpperCase();
+        if (!LOAD_ID_PATTERN.test(referenceNumber)) {
+          res.status(400).json({
+            error: "Invalid reference_number",
+            detail: "Must be three uppercase letters followed by five digits (e.g. FDX10234).",
+          });
+          return;
+        }
+        const { data, error } = await supabase
+          .from("loads")
+          .select("*")
+          .eq("load_id", referenceNumber)
+          .order("pickup_datetime", { ascending: true });
+
+        if (error) {
+          console.error("Supabase loads query:", error.message);
+          res.status(500).json({ error: "Failed to query loads", detail: error.message });
+          return;
+        }
+        res.json({ loads: data ?? [] });
+        return;
+      }
+
+      if (laneRaw === "" || equipmentRaw === "") {
         res.status(400).json({
-          error: "Invalid reference_number",
-          detail: "Must be three uppercase letters followed by five digits (e.g. FDX10234).",
+          error: "Invalid query",
+          detail:
+            "Without reference_number, both lane and equipment are required (e.g. lane=Chicago, IL...Madison, WI&equipment=Dry Van).",
         });
         return;
       }
+
+      const equipment = sanitizeLikeFragment(equipmentRaw);
+      if (!equipment) {
+        res.status(400).json({
+          error: "Invalid query",
+          detail: "equipment is empty or invalid after sanitization.",
+        });
+        return;
+      }
+
+      const lane = parseLaneFragments(laneRaw);
+
+      if (lane.kind === "pair") {
+        const patterns = pairLaneSearchPatterns(lane.origin, lane.dest);
+        let lastError: string | null = null;
+        for (const { origin: o, dest: d } of patterns) {
+          const { data, error } = await supabase
+            .from("loads")
+            .select("*")
+            .ilike("equipment_type", `%${equipment}%`)
+            .ilike("origin", `%${o}%`)
+            .ilike("destination", `%${d}%`)
+            .order("pickup_datetime", { ascending: true });
+
+          if (error) {
+            lastError = error.message;
+            console.error("Supabase loads query:", error.message);
+            break;
+          }
+          if ((data?.length ?? 0) > 0) {
+            res.json({ loads: data ?? [] });
+            return;
+          }
+        }
+        if (lastError) {
+          res.status(500).json({ error: "Failed to query loads", detail: lastError });
+          return;
+        }
+        res.json({ loads: [] });
+        return;
+      }
+
+      if (!lane.text) {
+        res.status(400).json({ error: "Invalid query", detail: "lane must not be empty." });
+        return;
+      }
+
       const { data, error } = await supabase
         .from("loads")
         .select("*")
-        .eq("load_id", referenceNumber)
+        .ilike("equipment_type", `%${equipment}%`)
         .order("pickup_datetime", { ascending: true });
 
       if (error) {
@@ -355,79 +431,28 @@ export function createApp() {
         res.status(500).json({ error: "Failed to query loads", detail: error.message });
         return;
       }
-      res.json({ loads: data ?? [] });
+
+      const rows = (data ?? []).filter((row) => laneMatchesRow(row, lane.text));
+      res.json({ loads: rows });
       return;
     }
 
-    if (laneRaw === "" || equipmentRaw === "") {
-      res.status(400).json({
-        error: "Invalid query",
+    const pool = getPgPoolForLoads();
+    if (!pool) {
+      res.status(503).json({
+        error: "Load search unavailable",
         detail:
-          "Without reference_number, both lane and equipment are required (e.g. lane=Chicago, IL...Madison, WI&equipment=Dry Van).",
+          "Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY, or set DATABASE_URL to a Postgres instance with public.loads (e.g. docker compose full stack).",
       });
       return;
     }
 
-    const equipment = sanitizeLikeFragment(equipmentRaw);
-    if (!equipment) {
-      res.status(400).json({
-        error: "Invalid query",
-        detail: "equipment is empty or invalid after sanitization.",
-      });
+    const pgResult = await pgSearchLoads(pool, referenceNumberRaw, equipmentRaw, laneRaw);
+    if (!pgResult.ok) {
+      res.status(pgResult.status).json({ error: pgResult.error, detail: pgResult.detail });
       return;
     }
-
-    const lane = parseLaneFragments(laneRaw);
-
-    if (lane.kind === "pair") {
-      const patterns = pairLaneSearchPatterns(lane.origin, lane.dest);
-      let lastError: string | null = null;
-      for (const { origin: o, dest: d } of patterns) {
-        const { data, error } = await supabase
-          .from("loads")
-          .select("*")
-          .ilike("equipment_type", `%${equipment}%`)
-          .ilike("origin", `%${o}%`)
-          .ilike("destination", `%${d}%`)
-          .order("pickup_datetime", { ascending: true });
-
-        if (error) {
-          lastError = error.message;
-          console.error("Supabase loads query:", error.message);
-          break;
-        }
-        if ((data?.length ?? 0) > 0) {
-          res.json({ loads: data ?? [] });
-          return;
-        }
-      }
-      if (lastError) {
-        res.status(500).json({ error: "Failed to query loads", detail: lastError });
-        return;
-      }
-      res.json({ loads: [] });
-      return;
-    }
-
-    if (!lane.text) {
-      res.status(400).json({ error: "Invalid query", detail: "lane must not be empty." });
-      return;
-    }
-
-    const { data, error } = await supabase
-      .from("loads")
-      .select("*")
-      .ilike("equipment_type", `%${equipment}%`)
-      .order("pickup_datetime", { ascending: true });
-
-    if (error) {
-      console.error("Supabase loads query:", error.message);
-      res.status(500).json({ error: "Failed to query loads", detail: error.message });
-      return;
-    }
-
-    const rows = (data ?? []).filter((row) => laneMatchesRow(row, lane.text));
-    res.json({ loads: rows });
+    res.json({ loads: pgResult.loads });
   });
 
   const dist = [path.join(__dirname, "..", "dist"), path.join(__dirname, "..", "..", "dist")].find(

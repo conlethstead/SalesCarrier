@@ -4,13 +4,14 @@ React + TypeScript UI and a small **Express** API that **ingests** call outcome 
 
 ## API
 
-**Production:** Use **HTTPS only** (`https://…`) for the dashboard and for workflow calls to **`POST /api/events`**. The reverse proxy (e.g. Caddy in `docker-compose.prod.yml`) terminates TLS, redirects HTTP→HTTPS, and sends `Strict-Transport-Security`. Plain HTTP to port **3001** is for local/dev only when you run the Node process without a proxy.
+**Production:** Use **HTTPS only** (`https://…`) for the dashboard and for workflow calls to **`POST /api/events`**. Terminate TLS at your host (**Cloud Run**, an HTTPS load balancer, etc.); the Node app serves HTTP behind that. Plain HTTP on **3001** is for local/dev only.
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
 | `GET` | `/api/health` | none | Liveness |
 | `POST` | `/api/events` | `X-API-Key` | Append one call record |
 | `GET` | `/api/summary` | `X-API-Key` | Aggregated KPIs + recent rows |
+| `GET` | `/api/export/calls.csv` | `X-API-Key` | UTF-8 CSV of **all** stored calls (newest first); same columns as the dashboard export |
 
 ### Ingest body (`POST /api/events`)
 
@@ -58,9 +59,9 @@ Example:
 }
 ```
 
-Older **legacy** rows (with `call_id`, `outcome`, `sentiment`) already stored in `events.json` are still summarized for charts.
+Older **legacy** rows (with `call_id`, `outcome`, `sentiment`) already stored in the events file are still summarized for charts.
 
-Events are appended to `data/events.json` (configurable via `DATA_DIR`).
+Events are appended to `data/events.csv` (configurable via `DATA_DIR`). If `events.json` exists from an older deploy, it is migrated once to `events.csv` and renamed to `events.json.migrated`.
 
 ### Example: send an event (local HTTP)
 
@@ -71,7 +72,7 @@ curl -sS -X POST http://127.0.0.1:3001/api/events \
   -d '{"reference_number":"AAA11111","mc_number":"123456","booking_decision":"yes","call_duration":120,"number_of_counteroffers":1,"verified":true}'
 ```
 
-**Deployed (HTTPS):** same request with `https://<your-domain>/api/events` (Let’s Encrypt or other TLS).
+**Deployed (HTTPS):** same request with `https://<your-host>/api/events` (TLS from Cloud Run, a load balancer, or your edge).
 
 ## Local development
 
@@ -110,19 +111,19 @@ docker run --rm -p 3001:3001 -e API_KEY=your-secret carrier-metrics
 
 Use the same value for `VITE_API_KEY` at **build** time and `API_KEY` at **run** time so the baked UI can authenticate.
 
-### Production: Docker Compose + Caddy + Let’s Encrypt
+### Compose: Postgres + app (loads + metrics)
 
-Use **`docker-compose.prod.yml`** with **`Caddyfile`**: Caddy terminates TLS and obtains certificates automatically. Set `METRICS_DOMAIN`, `ACME_EMAIL`, `API_KEY`, and `VITE_API_KEY` in `.env` (see `.env.example`).
+**`docker-compose.full.yml`** starts **Postgres** (with `public.loads` from `../supabase/migrations` + seed) and the **metrics** container. Set `API_KEY` / `VITE_API_KEY` in `.env` (see `.env.example`).
 
 ```bash
-docker compose -f docker-compose.prod.yml --env-file .env up -d --build
+docker compose -f docker-compose.full.yml --env-file .env up -d --build
 ```
 
-**Google Cloud (Compute Engine VM + Caddy + Let’s Encrypt):** [DEPLOY-GCP.md](./DEPLOY-GCP.md).
+Open `http://127.0.0.1:3001`. Events persist in the `carrier-metrics-data` volume as `events.csv`.
 
-**Google Cloud Run (HTTPS `*.run.app`, no domain required):** [DEPLOY-CLOUD-RUN.md](./DEPLOY-CLOUD-RUN.md).
+**Google Cloud Run (managed HTTPS):** [DEPLOY-CLOUD-RUN.md](./DEPLOY-CLOUD-RUN.md).
 
 ## HTTPS
 
-- **Compose + Caddy:** Let’s Encrypt is handled by Caddy (see above).
-- **Other:** Terminate TLS at your load balancer or reverse proxy. The Node app speaks HTTP behind that layer.
+- **Cloud Run:** HTTPS is provided for `https://….run.app` (and custom domains you map there).
+- **Elsewhere:** Terminate TLS at your load balancer or edge proxy; the Node app stays HTTP on the internal/backend port.

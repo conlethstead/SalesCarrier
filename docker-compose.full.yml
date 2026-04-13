@@ -1,0 +1,51 @@
+# Full local/demo stack: Postgres (loads) + metrics API/UI in one compose file.
+# Repo layout: this file lives in metrics-dashboard/; SQL init mounts from ../supabase/.
+#
+# Usage (from metrics-dashboard/):
+#   docker compose -f docker-compose.full.yml --env-file .env up -d --build
+#
+# Required in .env: API_KEY and VITE_API_KEY (same secret). Optional: set POSTGRES_PASSWORD (must match DATABASE_URL).
+#
+# UI/API: http://127.0.0.1:3001  — load search uses DATABASE_URL → Postgres; events persist in volume.
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: postgres
+    volumes:
+      - carrier-sales-pg:/var/lib/postgresql/data
+      - ../supabase/migrations/20260412000000_create_loads.sql:/docker-entrypoint-initdb.d/10-loads.sql:ro
+      - ../supabase/seed.sql:/docker-entrypoint-initdb.d/20-seed.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  metrics:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        VITE_API_KEY: ${VITE_API_KEY}
+    ports:
+      - "${METRICS_PORT:-3001}:3001"
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      API_KEY: ${API_KEY}
+      DATA_DIR: /data
+      DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD:-postgres}@db:5432/postgres
+    volumes:
+      - carrier-metrics-data:/data
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  carrier-sales-pg:
+  carrier-metrics-data:

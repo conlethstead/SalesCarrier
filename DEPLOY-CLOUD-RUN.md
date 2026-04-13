@@ -13,14 +13,14 @@ Use your Cloud Run **URL** (from the console or `gcloud run services describe --
 | Metrics JSON | `GET https://<your-service>.run.app/api/summary` |
 | Health | `GET https://<your-service>.run.app/api/health` |
 
-That satisfies the challenge’s **HTTPS + deployed API** story. You **skip** **[DEPLOY-GCP.md](./DEPLOY-GCP.md)** (VM + Caddy) unless you explicitly want a separate VM deployment.
+That satisfies the challenge’s **HTTPS + deployed API** story.
 
-## Trade-offs vs the VM + Caddy guide
+## Trade-offs vs running your own VM
 
 | Topic | Cloud Run |
 |--------|-----------|
 | **HTTPS** | Automatic on `*.run.app` |
-| **Persisted metrics** | Container disk is **ephemeral** — `data/events.json` can reset when instances recycle. For a durable demo, add Cloud Storage / Firestore later. |
+| **Persisted metrics** | Container disk is **ephemeral** — `data/events.csv` can reset when instances recycle. For a durable demo, add Cloud Storage / Firestore later. |
 | **Cost** | Scales to zero when idle; pay per request (often cheap for demos). |
 
 ## Prerequisites
@@ -66,14 +66,7 @@ From the **`metrics-dashboard/`** directory.
 
 ### Option A — Local Docker (Docker Desktop)
 
-Install **[Docker Desktop for Mac](https://docs.docker.com/desktop/install/mac-install/)**, then:
-
-```bash
-cd metrics-dashboard
-./scripts/rebuild-and-push.sh
-```
-
-Or manually:
+Install **[Docker Desktop for Mac](https://docs.docker.com/desktop/install/mac-install/)**, then from **`metrics-dashboard/`**:
 
 ```bash
 export IMAGE="${REGION}-docker.pkg.dev/${PROJECT_ID}/carrier-images/${SERVICE_NAME}:v1"
@@ -150,12 +143,12 @@ With **`API_KEY`** and **`VITE_API_KEY`** set to the **same** value in **`metric
 
 ```bash
 cd metrics-dashboard
-chmod +x scripts/rebuild-and-push.sh scripts/deploy-cloud-run.sh
-./scripts/rebuild-and-push.sh
+chmod +x scripts/build-via-cloud-build.sh scripts/deploy-cloud-run.sh
+./scripts/build-via-cloud-build.sh
 ./scripts/deploy-cloud-run.sh REGION-docker.pkg.dev/PROJECT/REPO/SERVICE:TAG
 ```
 
-The push script prints the full image URI to pass into **`deploy-cloud-run.sh`**. Override defaults with env vars: **`GCP_PROJECT_ID`**, **`GCP_REGION`**, **`CLOUD_RUN_SERVICE`** (e.g. `sales`), **`ARTIFACT_REPO`**.
+**`build-via-cloud-build.sh`** prints the image URI and the exact **`deploy-cloud-run.sh`** line. Override defaults with **`GCP_PROJECT_ID`**, **`GCP_REGION`**, **`CLOUD_RUN_SERVICE`** (e.g. `sales`), **`ARTIFACT_REPO`**.
 
 ## Changing the API key later
 
@@ -174,10 +167,6 @@ gcloud artifacts repositories create carrier-images \
 ```
 
 Use your **`--project`** and **`--location`** if they differ.
-
-## Optional: build in Cloud Build (no local Docker)
-
-You can add a `cloudbuild.yaml` that builds with `--build-arg VITE_API_KEY=$$API_KEY` from Secret Manager; omitted here to keep the first deploy minimal.
 
 ## Optional: custom domain
 
