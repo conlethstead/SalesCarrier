@@ -26,7 +26,17 @@ export async function fetchSummary(
     const err = await res.json().catch(() => ({}));
     throw new Error((err as { error?: string }).error ?? res.statusText);
   }
-  return res.json() as Promise<MetricsSummary>;
+  const raw = (await res.json()) as MetricsSummary & {
+    avg_listed_minus_agreed_when_booked?: number | null;
+  };
+  // Older API responses only exposed listed − agreed; map to agreed − listed.
+  if (
+    raw.avg_agreed_minus_listed_when_booked == null &&
+    raw.avg_listed_minus_agreed_when_booked != null
+  ) {
+    raw.avg_agreed_minus_listed_when_booked = -raw.avg_listed_minus_agreed_when_booked;
+  }
+  return raw;
 }
 
 /** All stored calls as CSV (UTF-8 with BOM), newest first. Same columns as “Download CSV (filtered)”. */

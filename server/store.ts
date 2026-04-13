@@ -216,7 +216,7 @@ export function computeSummary(
         Number.isFinite(e.listed_rate) &&
         Number.isFinite(e.agreed_rate)
       ) {
-        rateDiffs.push(e.listed_rate - e.agreed_rate);
+        rateDiffs.push(e.agreed_rate - e.listed_rate);
       }
     } else {
       if (isAffirmativeWorkflowField(e.failed_verification)) failed_verification_yes_count++;
@@ -228,13 +228,15 @@ export function computeSummary(
       if (e.booking_decision === "yes") {
         const listed = e.load?.[0]?.loadboard_rate ?? parseCurrencyNumber(e.listed_rate ?? null);
         const agreed = parseCurrencyNumber(e.agreed_rate ?? null);
-        if (listed != null && agreed != null) rateDiffs.push(listed - agreed);
+        if (listed != null && agreed != null) rateDiffs.push(agreed - listed);
       }
     }
   }
 
-  const avg_listed_minus_agreed_when_booked =
+  const avg_agreed_minus_listed_when_booked =
     rateDiffs.length === 0 ? null : rateDiffs.reduce((a, b) => a + b, 0) / rateDiffs.length;
+  const avg_listed_minus_agreed_when_booked =
+    avg_agreed_minus_listed_when_booked == null ? null : -avg_agreed_minus_listed_when_booked;
 
   let top_step_emotion: string | null = null;
   let top_step_emotion_count = 0;
@@ -268,6 +270,7 @@ export function computeSummary(
     by_sentiment,
     booked_count,
     booking_rate,
+    avg_agreed_minus_listed_when_booked,
     avg_listed_minus_agreed_when_booked,
     failed_verification_yes_count,
     failed_verification_rate,

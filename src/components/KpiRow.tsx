@@ -61,8 +61,8 @@ export function KpiRow({ summary }: { summary: MetricsSummary }) {
           : summary.avg_counteroffers_per_call.toFixed(1),
     },
     {
-      label: "Avg listed − agreed",
-      value: fmtSignedMoney(summary.avg_listed_minus_agreed_when_booked),
+      label: "Avg agreed - listed",
+      value: fmtSignedMoney(summary.avg_agreed_minus_listed_when_booked),
     },
   ];
 

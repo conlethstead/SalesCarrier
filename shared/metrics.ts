@@ -228,7 +228,12 @@ export interface MetricsSummaryComputed {
   by_sentiment: Record<CarrierSentiment, number>;
   booked_count: number;
   booking_rate: number;
-  /** Average (listed − agreed) in dollars for booked calls with both values; listed from loadboard or `listed_rate`. */
+  /** Average (agreed − listed) in dollars for booked calls with both values; listed from loadboard or `listed_rate`. */
+  avg_agreed_minus_listed_when_booked: number | null;
+  /**
+   * Negation of `avg_agreed_minus_listed_when_booked` (i.e. listed − agreed).
+   * Still sent so older dashboard bundles that only read this key keep working.
+   */
   avg_listed_minus_agreed_when_booked: number | null;
   failed_verification_yes_count: number;
   failed_verification_rate: number;
