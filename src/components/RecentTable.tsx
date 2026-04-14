@@ -397,7 +397,7 @@ export function RecentTable({
               <th style={th}>Time</th>
               <th style={th}>Carrier</th>
               <th style={thLoadRef}>Load ref</th>
-              <th style={thLane}>Lane</th>
+              <th style={th}>Lane</th>
               <th style={th}>Equipment</th>
               <th style={th}>Listed rate</th>
               <th style={th}>Agreed rate</th>
@@ -437,7 +437,7 @@ export function RecentTable({
                         <td style={{ ...tdLoadRef, fontFamily: "var(--mono)", fontSize: "0.8rem" }}>
                           {loadRefTableCell(r)}
                         </td>
-                        <td style={tdLane} title={load ? laneFull(load) : undefined}>
+                        <td style={td} title={load ? laneFull(load) : undefined}>
                           {load ? lanePreview(load) : "—"}
                         </td>
                         <td style={td}>{load?.equipment_type ?? "—"}</td>
@@ -457,7 +457,7 @@ export function RecentTable({
                         <td style={{ ...tdLoadRef, fontFamily: "var(--mono)", fontSize: "0.8rem" }}>
                           {loadRefTableCell(r)}
                         </td>
-                        <td style={tdLane} title={load ? laneFull(load) : undefined}>
+                        <td style={td} title={load ? laneFull(load) : undefined}>
                           {load ? lanePreview(load) : "—"}
                         </td>
                         <td style={td}>{load?.equipment_type ?? "—"}</td>
@@ -958,29 +958,16 @@ const td: CSSProperties = {
   maxWidth: "12rem",
 };
 
-/** Narrow column + tight gutter before Lane so ref IDs don’t leave a wide empty band. */
 const thLoadRef: CSSProperties = {
   ...th,
   width: "1%",
-  paddingRight: "0.35rem",
 };
 
 const tdLoadRef: CSSProperties = {
   ...td,
   width: "1%",
-  paddingRight: "0.35rem",
   whiteSpace: "nowrap",
   maxWidth: "10rem",
-};
-
-const thLane: CSSProperties = {
-  ...th,
-  paddingLeft: "0.35rem",
-};
-
-const tdLane: CSSProperties = {
-  ...td,
-  paddingLeft: "0.35rem",
 };
 
 const expandBtn: CSSProperties = {

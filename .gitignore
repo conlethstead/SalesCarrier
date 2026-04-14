@@ -3,6 +3,7 @@ dist
 dist-server
 .env
 .env.local
+.last-cloud-image
 data
 *.log
 .DS_Store

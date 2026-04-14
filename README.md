@@ -121,7 +121,7 @@ docker compose -f docker-compose.full.yml --env-file .env up -d --build
 
 Open `http://127.0.0.1:3001`. Events persist in the `carrier-metrics-data` volume as `events.csv`.
 
-**Google Cloud Run (managed HTTPS):** [DEPLOY-CLOUD-RUN.md](./DEPLOY-CLOUD-RUN.md).
+**Google Cloud Run (managed HTTPS):** [DEPLOYMENT.md](./DEPLOYMENT.md) (access, reproduce, `./scripts/redeploy-cloud-run.sh`).
 
 ## HTTPS
 

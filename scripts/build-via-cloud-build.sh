@@ -54,6 +54,10 @@ gcloud builds submit . \
   --config=cloudbuild.yaml \
   --substitutions=_VITE_KEY="${VITE_API_KEY}",_IMAGE="${IMAGE}"
 
+echo "${IMAGE}" > "${ROOT}/.last-cloud-image"
+
 echo ""
 echo "Done. Deploy:"
 echo "  ./scripts/deploy-cloud-run.sh ${IMAGE}"
+echo "Or full redeploy (build + deploy + URL):"
+echo "  ./scripts/redeploy-cloud-run.sh"
